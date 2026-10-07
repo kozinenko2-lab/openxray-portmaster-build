@@ -1,0 +1,79 @@
+name: Build OpenXRay PortMaster ARM64
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - ".github/workflows/build-openxray-portmaster.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - name: Checkout pinned OpenXRay with submodules
+        uses: actions/checkout@v4
+        with:
+          repository: lesad710/openxray-android
+          ref: d2d54dabecae68b27603cd869d9fc7bd38a325f1
+          submodules: recursive
+          fetch-depth: 1
+          path: openxray
+
+      - name: Enable ARM64 emulation
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - name: Pull PortMaster ARM64 builder
+        run: docker pull --platform=linux/arm64 ghcr.io/monkeyx-net/portmaster-build-templates/portmaster-builder:aarch64-latest
+
+      - name: Configure and build OpenXRay
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p "$GITHUB_WORKSPACE/logs"
+          docker run --rm             --platform=linux/arm64             -v "$GITHUB_WORKSPACE:/workspace"             -w /workspace/openxray             ghcr.io/monkeyx-net/portmaster-build-templates/portmaster-builder:aarch64-latest             bash -lc '
+              set -euxo pipefail
+              uname -a
+              gcc --version | head -1
+              g++ --version | head -1
+              cmake --version | head -1
+              rm -rf build-h700
+              cmake -S . -B build-h700 -G Ninja                 -DCMAKE_BUILD_TYPE=Release                 -DXRAY_USE_GLES=ON                 -DGLI_TEST_ENABLE=OFF                 -DLUABIND_BUILD_TESTING=OFF                 -DMEMORY_ALLOCATOR=standard                 -DCMAKE_C_FLAGS="-march=armv8-a -mcpu=cortex-a53 -mtune=cortex-a53"                 -DCMAKE_CXX_FLAGS="-march=armv8-a -mcpu=cortex-a53 -mtune=cortex-a53"                 2>&1 | tee /workspace/logs/cmake-configure.log
+              cmake --build build-h700 --parallel 2                 2>&1 | tee /workspace/logs/cmake-build.log
+            '
+
+      - name: Inspect ARM64 output
+        if: success()
+        shell: bash
+        run: |
+          set -euxo pipefail
+          find openxray/bin -maxdepth 4 -type f -print | sort | tee logs/output-files.txt || true
+          XR_BIN="$(find openxray/bin -type f -name xr_3da -print -quit)"
+          test -n "$XR_BIN"
+          file "$XR_BIN" | tee logs/xr_3da-file.txt
+          readelf -d "$XR_BIN" | tee logs/xr_3da-dynamic.txt
+          readelf --version-info "$XR_BIN" | tee logs/xr_3da-versions.txt
+
+      - name: Upload build logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: openxray-h700-build-logs
+          path: logs/
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Upload ARM64 binaries
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: openxray-h700-arm64-binaries
+          path: openxray/bin/
+          if-no-files-found: error
+          retention-days: 30
