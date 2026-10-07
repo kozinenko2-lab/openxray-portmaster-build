@@ -6,6 +6,7 @@ on:
     branches: [ main ]
     paths:
       - ".github/workflows/build-openxray-portmaster.yml"
+      - "patches/**"
 
 permissions:
   contents: read
@@ -15,6 +16,11 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     steps:
+      - name: Checkout build support repo
+        uses: actions/checkout@v4
+        with:
+          path: build-repo
+
       - name: Checkout pinned OpenXRay with submodules
         uses: actions/checkout@v4
         with:
@@ -23,6 +29,14 @@ jobs:
           submodules: recursive
           fetch-depth: 1
           path: openxray
+
+      - name: Apply H700 patches
+        shell: bash
+        run: |
+          set -euxo pipefail
+          git -C openxray apply ../build-repo/patches/0001-portmaster-bundled-theora.patch
+          git -C openxray diff --check
+          git -C openxray diff --stat
 
       - name: Enable ARM64 emulation
         uses: docker/setup-qemu-action@v3
