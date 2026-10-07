@@ -1,0 +1,65 @@
+--- a/cmake/XRay.Compiler.GNULike.cmake
++++ b/cmake/XRay.Compiler.GNULike.cmake
+@@ -169,8 +169,60 @@
+         find_package(JPEG)
+         find_package(Ogg REQUIRED)
+         find_package(Vorbis REQUIRED)
+-        find_package(Theora REQUIRED)
+-        find_package(LZO REQUIRED)
++        # PortMaster / Linux GLES builds reuse the bundled Theora decoder
++        # that is already maintained for Android. This avoids depending on
++        # a distro-specific libtheora package on handheld builders/firmware.
++        if (XRAY_USE_GLES AND NOT TARGET Theora::Theora)
++            set(_theora_src_dir "${CMAKE_SOURCE_DIR}/cmake/android/theora")
++            add_library(xray_theora STATIC
++                "${_theora_src_dir}/apiwrapper.c"
++                "${_theora_src_dir}/bitpack.c"
++                "${_theora_src_dir}/decapiwrapper.c"
++                "${_theora_src_dir}/decinfo.c"
++                "${_theora_src_dir}/decode.c"
++                "${_theora_src_dir}/dequant.c"
++                "${_theora_src_dir}/fragment.c"
++                "${_theora_src_dir}/huffdec.c"
++                "${_theora_src_dir}/idct.c"
++                "${_theora_src_dir}/info.c"
++                "${_theora_src_dir}/internal.c"
++                "${_theora_src_dir}/quant.c"
++                "${_theora_src_dir}/state.c"
++            )
++            set_target_properties(xray_theora PROPERTIES POSITION_INDEPENDENT_CODE ON)
++            target_include_directories(xray_theora
++                PUBLIC "${CMAKE_SOURCE_DIR}/sdk/include"
++                PRIVATE "${_theora_src_dir}"
++            )
++            target_link_libraries(xray_theora PUBLIC Ogg::Ogg)
++            add_library(Theora::Theora ALIAS xray_theora)
++            add_library(Theora::TheoraDec ALIAS xray_theora)
++        else()
++            find_package(Theora REQUIRED)
++        endif()
++
++        # LZO 2.10 is already vendored in oxr_deps by this fork. Use it for
++        # PortMaster/GLES so the handheld build has no distro LZO dependency.
++        if (XRAY_USE_GLES AND EXISTS "${CMAKE_SOURCE_DIR}/oxr_deps/lzo-src/CMakeLists.txt")
++            set(ENABLE_STATIC ON CACHE BOOL "" FORCE)
++            set(ENABLE_SHARED OFF CACHE BOOL "" FORCE)
++            add_subdirectory(
++                "${CMAKE_SOURCE_DIR}/oxr_deps/lzo-src"
++                "${CMAKE_BINARY_DIR}/lzo-portmaster"
++                EXCLUDE_FROM_ALL
++            )
++            if (TARGET lzo_static_lib)
++                target_include_directories(lzo_static_lib
++                    PUBLIC "${CMAKE_SOURCE_DIR}/oxr_deps/lzo-src/include"
++                )
++                set_target_properties(lzo_static_lib PROPERTIES POSITION_INDEPENDENT_CODE ON)
++                if (NOT TARGET LZO::LZO)
++                    add_library(LZO::LZO ALIAS lzo_static_lib)
++                endif()
++            endif()
++        else()
++            find_package(LZO REQUIRED)
++        endif()
+         find_package(mimalloc NAMES mimalloc2 mimalloc2.0 mimalloc)
+     endif()
+ endif()
