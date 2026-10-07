@@ -6,7 +6,7 @@ on:
     branches: [ main ]
     paths:
       - ".github/workflows/build-openxray-portmaster.yml"
-      - "patches/**"
+      - "patches/**"\n      - "h700/**"
 
 permissions:
   contents: read
@@ -42,8 +42,7 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          git -C openxray apply ../build-repo/patches/0001-portmaster-bundled-theora.patch
-          git -C openxray apply ../build-repo/patches/0002-portmaster-bundled-lzo.patch
+          git -C openxray apply ../build-repo/h700/portmaster-bundled-codecs.patch
           git -C openxray diff --check
           git -C openxray diff --stat
 
