@@ -6,7 +6,8 @@ on:
     branches: [ main ]
     paths:
       - ".github/workflows/build-openxray-portmaster.yml"
-      - "patches/**"\n      - "h700/**"
+      - "patches/**"
+      - "h700/**"
 
 permissions:
   contents: read
