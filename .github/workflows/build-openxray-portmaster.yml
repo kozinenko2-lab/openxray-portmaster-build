@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   build:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 120
     steps:
       - name: Checkout build support repo
@@ -47,20 +47,15 @@ jobs:
           git -C openxray diff --check
           git -C openxray diff --stat
 
-      - name: Enable ARM64 emulation
-        uses: docker/setup-qemu-action@v3
-        with:
-          platforms: arm64
-
       - name: Pull PortMaster ARM64 builder
-        run: docker pull --platform=linux/arm64 ghcr.io/monkeyx-net/portmaster-build-templates/portmaster-builder:aarch64-latest
+        run: docker pull ghcr.io/monkeyx-net/portmaster-build-templates/portmaster-builder:aarch64-latest
 
       - name: Configure and build OpenXRay
         shell: bash
         run: |
           set -o pipefail
           mkdir -p "$GITHUB_WORKSPACE/logs"
-          docker run --rm             --platform=linux/arm64             -v "$GITHUB_WORKSPACE:/workspace"             -w /workspace/openxray             ghcr.io/monkeyx-net/portmaster-build-templates/portmaster-builder:aarch64-latest             bash -lc '
+          docker run --rm -v "$GITHUB_WORKSPACE:/workspace"             -w /workspace/openxray             ghcr.io/monkeyx-net/portmaster-build-templates/portmaster-builder:aarch64-latest             bash -lc '
               set -euxo pipefail
               uname -a
               gcc --version | head -1
@@ -68,7 +63,7 @@ jobs:
               cmake --version | head -1
               rm -rf build-h700
               cmake -S . -B build-h700 -G Ninja                 -DCMAKE_BUILD_TYPE=Release                 -DXRAY_USE_GLES=ON                 -DGLI_TEST_ENABLE=OFF                 -DLUABIND_BUILD_TESTING=OFF                 -DMEMORY_ALLOCATOR=standard                 -DCMAKE_C_FLAGS="-march=armv8-a -mcpu=cortex-a53 -mtune=cortex-a53"                 -DCMAKE_CXX_FLAGS="-march=armv8-a -mcpu=cortex-a53 -mtune=cortex-a53"                 2>&1 | tee /workspace/logs/cmake-configure.log
-              cmake --build build-h700 --parallel 2                 2>&1 | tee /workspace/logs/cmake-build.log
+              cmake --build build-h700 --parallel 4                 2>&1 | tee /workspace/logs/cmake-build.log
             '
 
       - name: Inspect ARM64 output
