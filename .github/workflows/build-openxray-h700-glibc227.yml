@@ -12,7 +12,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: openxray-h700-glibc227
+  group: openxray-h700-glibc227-${{ github.sha }}
   cancel-in-progress: true
 
 jobs:
