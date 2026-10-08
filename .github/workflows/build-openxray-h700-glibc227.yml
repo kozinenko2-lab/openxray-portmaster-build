@@ -1,0 +1,80 @@
+name: Build OpenXRay H700 glibc 2.27
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - ".github/workflows/build-openxray-h700-glibc227.yml"
+      - "h700/**"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 120
+    steps:
+      - name: Checkout build support repo
+        uses: actions/checkout@v4
+        with:
+          path: build-repo
+
+      - name: Checkout pinned OpenXRay with submodules
+        uses: actions/checkout@v4
+        with:
+          repository: lesad710/openxray-android
+          ref: d2d54dabecae68b27603cd869d9fc7bd38a325f1
+          submodules: recursive
+          fetch-depth: 1
+          path: openxray
+
+      - name: Pin GCC9-compatible sse2neon
+        shell: bash
+        run: |
+          set -euxo pipefail
+          git -C openxray/Externals/sse2neon fetch --depth 1 origin 3cf69760cc6fdc45a5d70f0d42a8f079489f9867
+          git -C openxray/Externals/sse2neon checkout --detach 3cf69760cc6fdc45a5d70f0d42a8f079489f9867
+
+      - name: Apply H700 dependency patch
+        shell: bash
+        run: |
+          set -euxo pipefail
+          git -C openxray apply ../build-repo/h700/portmaster-bundled-codecs.patch
+          git -C openxray diff --check
+
+      - name: Build inside glibc 2.27 ARM64 container
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p "$GITHUB_WORKSPACE/logs"
+          docker pull ubuntu:18.04
+          docker run --rm             -v "$GITHUB_WORKSPACE:/workspace"             -w /workspace             ubuntu:18.04             bash /workspace/build-repo/h700/build_glibc227.sh
+
+      - name: Upload compatibility logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: openxray-h700-glibc227-logs
+          path: logs/
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Upload H700 ARM64 binaries
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: openxray-h700-glibc227-binaries
+          path: openxray/bin/aarch64/Release/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload H700 runtimes
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: openxray-h700-glibc227-runtime
+          path: runtime-glibc227/
+          if-no-files-found: error
+          retention-days: 30
