@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+BUILD_REPO="$(cd "$SCRIPT_DIR/.." && pwd)"
+
 if [ "$#" -lt 4 ]; then
   echo "usage: $0 <openxray-source> <bin-dir> <runtime-dir> <output-dir>" >&2
   exit 2
@@ -35,6 +38,17 @@ rm -f "$STAGE/libs.aarch64"/libtheora*.so* "$STAGE/libs.aarch64"/liblzo*.so*
 cp "$SRC/res/fsgame.ltx" "$STAGE/fsgame.ltx"
 rm -rf "$STAGE/gamedata"
 cp -a "$SRC/res/gamedata" "$STAGE/gamedata"
+
+# H700 uses only the OpenGL/GLES renderer. Do not ship the desktop DirectX
+# shader trees (r1/r2/r3). Rebuild the GL overlay with Linux case-sensitive
+# include paths verified.
+rm -rf "$STAGE/gamedata/shaders/r1" \
+       "$STAGE/gamedata/shaders/r2" \
+       "$STAGE/gamedata/shaders/r3"
+python3 "$BUILD_REPO/h700/prepare_shader_overlay.py" \
+  "$SRC/res/gamedata/shaders/gl" \
+  "$STAGE/gamedata/shaders/gl" \
+  | tee "$STAGE/SHADER_OVERLAY.txt"
 
 cp "$SRC/portmaster/ports/openxray/OpenXRay.sh" "$STAGE/OpenXRay.sh"
 chmod +x "$STAGE/OpenXRay.sh"
