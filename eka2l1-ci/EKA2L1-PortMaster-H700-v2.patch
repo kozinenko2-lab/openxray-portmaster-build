@@ -1388,7 +1388,7 @@ diff -ruN '--exclude=__pycache__' a/src/emu/portmaster/src/emu_window_sdl2.cpp b
 diff -ruN '--exclude=__pycache__' a/src/emu/portmaster/src/main.cpp b/src/emu/portmaster/src/main.cpp
 --- a/src/emu/portmaster/src/main.cpp	1970-01-01 00:00:00.000000000 +0000
 +++ b/src/emu/portmaster/src/main.cpp	2026-10-08 03:22:19.656415541 +0000
-@@ -0,0 +1,227 @@
+@@ -0,0 +1,229 @@
 +// Copyright (c) 2026 EKA2L1 PortMaster contributors.
 +// SPDX-License-Identifier: GPL-3.0-or-later
 +
