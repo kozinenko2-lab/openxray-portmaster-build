@@ -86,11 +86,11 @@ jobs:
                 /tmp/cxx20_probe.cpp -o /tmp/cxx20_probe
               echo "=== C++20 probe version requirements ==="
               "$GCC11_DIR/bin/aarch64-none-linux-gnu-readelf" -V /tmp/cxx20_probe \
-                | grep -E 'GLIBC_|GLIBCXX_|CXXABI_' | tail -40 || true
+                | grep -E "GLIBC_|GLIBCXX_|CXXABI_" | tail -40 || true
               LIBSTDCPP="$("$NEW_CXX" --print-file-name=libstdc++.so.6)"
               echo "GCC11 libstdc++: $LIBSTDCPP"
               "$GCC11_DIR/bin/aarch64-none-linux-gnu-readelf" -V "$LIBSTDCPP" \
-                | grep -E 'GLIBC_[0-9]' | tail -30 || true
+                | grep -E "GLIBC_[0-9]" | tail -30 || true
 
               {
                 echo "set(CMAKE_SYSTEM_NAME Linux)"
