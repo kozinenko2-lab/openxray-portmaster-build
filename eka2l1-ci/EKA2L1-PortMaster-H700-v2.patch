@@ -1868,7 +1868,7 @@ diff -ruN '--exclude=__pycache__' a/src/emu/portmaster/src/state.cpp b/src/emu/p
 +        auto *alserv = reinterpret_cast<applist_server *>(kern->get_by_name<service::server>(
 +            get_app_list_server_name_by_epocver(kern->get_epoc_version())));
 +        if (!alserv) return;
-+        for (const auto &reg : alserv->get_registerations()) {
++        for (auto &reg : alserv->get_registerations()) {
 +            if (reg.caps.is_hidden) continue;
 +            std::cout << "0x" << std::hex << std::uppercase << std::setw(8) << std::setfill('0')
 +                      << reg.mandatory_info.uid << std::dec << "  "
