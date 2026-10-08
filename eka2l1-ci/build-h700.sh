@@ -68,6 +68,47 @@ echo "GCC11 libstdc++: $LIBSTDCPP_REAL"
 cp -L "$LIBSTDCPP_REAL" /root/workspace/ci-artifacts/libstdc++.so.6
 cp -L "$LIBGCC_REAL" /root/workspace/ci-artifacts/libgcc_s.so.1
 
+
+# FFmpeg is configured outside the CMake target graph and therefore cannot use
+# EKA2L1's zlibstatic target directly. Reuse the H700 SDK zlib through a tiny
+# isolated overlay so old glibc headers never shadow the GCC11/glibc-2.35 sysroot.
+H700_ZLIB_OVERLAY=/opt/h700-zlib-overlay
+rm -rf "$H700_ZLIB_OVERLAY"
+mkdir -p "$H700_ZLIB_OVERLAY/include" "$H700_ZLIB_OVERLAY/lib"
+
+ZLIB_HEADER="$(find "$BASE_H700_SYSROOT" -name zlib.h -print -quit 2>/dev/null || true)"
+ZLIB_STATIC="$(find "$BASE_H700_SYSROOT" -name libz.a -print -quit 2>/dev/null || true)"
+ZLIB_SHARED="$(find "$BASE_H700_SYSROOT" \( -name libz.so -o -name 'libz.so.*' \) -print -quit 2>/dev/null || true)"
+ZLIB_LIB="$ZLIB_STATIC"
+if [ -z "$ZLIB_LIB" ]; then
+  ZLIB_LIB="$ZLIB_SHARED"
+fi
+
+FFMPEG_ZLIB_CFLAGS=
+FFMPEG_ZLIB_LDFLAGS=
+if [ -n "$ZLIB_HEADER" ] && [ -n "$ZLIB_LIB" ]; then
+  ZLIB_INCLUDE_DIR="$(dirname "$ZLIB_HEADER")"
+  cp -L "$ZLIB_HEADER" "$H700_ZLIB_OVERLAY/include/zlib.h"
+  if [ -f "$ZLIB_INCLUDE_DIR/zconf.h" ]; then
+    cp -L "$ZLIB_INCLUDE_DIR/zconf.h" "$H700_ZLIB_OVERLAY/include/zconf.h"
+  fi
+
+  if [ -n "$ZLIB_STATIC" ]; then
+    cp -L "$ZLIB_STATIC" "$H700_ZLIB_OVERLAY/lib/libz.a"
+    echo "FFmpeg zlib: static $ZLIB_STATIC"
+  else
+    cp -L "$ZLIB_SHARED" "$H700_ZLIB_OVERLAY/lib/libz.so"
+    echo "FFmpeg zlib: shared $ZLIB_SHARED"
+  fi
+
+  FFMPEG_ZLIB_CFLAGS="-I$H700_ZLIB_OVERLAY/include"
+  FFMPEG_ZLIB_LDFLAGS="-L$H700_ZLIB_OVERLAY/lib"
+else
+  echo "ERROR: H700 SDK zlib headers/library not found under $BASE_H700_SYSROOT" >&2
+  find "$BASE_H700_SYSROOT" -maxdepth 5 \( -name zlib.h -o -name libz.a -o -name 'libz.so*' \) -print 2>/dev/null | head -50 || true
+  exit 1
+fi
+
 cat >/tmp/eka2l1-gcc11-h700.cmake <<EOF
 set(CMAKE_SYSTEM_NAME Linux)
 set(CMAKE_SYSTEM_VERSION 1)
