@@ -758,7 +758,7 @@ diff -ruN '--exclude=__pycache__' a/src/emu/drivers/src/input/backend/emu_contro
 +                gamepad_state state{};
 +                state.controller = SDL_GameControllerOpen(device_index);
 +                if (!state.controller) {
-+                    LOG_WARN(DRIVER_INPUT, "SDL could not open controller {}: {}", device_index, SDL_GetError());
++                    LOG_WARN(COMMON, "SDL could not open controller {}: {}", device_index, SDL_GetError());
 +                    continue;
                  }
  
@@ -772,12 +772,12 @@ diff -ruN '--exclude=__pycache__' a/src/emu/drivers/src/input/backend/emu_contro
 +                char guid_text[33]{};
 +                SDL_JoystickGetGUIDString(state.guid, guid_text, sizeof(guid_text));
 +                const char *name = SDL_GameControllerName(state.controller);
-+                LOG_INFO(DRIVER_INPUT, "SDL controller connected: id={} name='{}' guid={}",
++                LOG_INFO(COMMON, "SDL controller connected: id={} name='{}' guid={}",
 +                         static_cast<int>(instance_id), name ? name : "unknown", guid_text);
 +
 +                if (input_debug_enabled()) {
 +                    char *mapping = SDL_GameControllerMapping(state.controller);
-+                    LOG_INFO(DRIVER_INPUT, "Controller mapping: {}", mapping ? mapping : "<none>");
++                    LOG_INFO(COMMON, "Controller mapping: {}", mapping ? mapping : "<none>");
 +                    if (mapping) SDL_free(mapping);
 +                }
  
@@ -908,7 +908,7 @@ diff -ruN '--exclude=__pycache__' a/src/emu/drivers/src/input/backend/emu_contro
 +                ++it;
 +                continue;
              }
-+            LOG_INFO(DRIVER_INPUT, "SDL controller disconnected: id={}", static_cast<int>(it->first));
++            LOG_INFO(COMMON, "SDL controller disconnected: id={}", static_cast<int>(it->first));
 +            if (it->second.controller) {
 +                SDL_GameControllerClose(it->second.controller);
 +            }
@@ -924,11 +924,11 @@ diff -ruN '--exclude=__pycache__' a/src/emu/drivers/src/input/backend/emu_contro
 +        // older/conflicting entry for the same GUID.
 +        const int generic_mappings = SDL_GameControllerAddMappingsFromFile("resources/gamecontrollerdb.txt");
 +        if (generic_mappings >= 0) {
-+            LOG_INFO(DRIVER_INPUT, "Loaded {} generic SDL controller mapping(s)", generic_mappings);
++            LOG_INFO(COMMON, "Loaded {} generic SDL controller mapping(s)", generic_mappings);
 +        }
 +        const int h700_mappings = SDL_GameControllerAddMappingsFromFile("resources/gamecontrollerdb-h700.txt");
 +        if (h700_mappings >= 0) {
-+            LOG_INFO(DRIVER_INPUT, "Loaded {} H700 controller mapping(s)", h700_mappings);
++            LOG_INFO(COMMON, "Loaded {} H700 controller mapping(s)", h700_mappings);
 +        }
  
 -        while (!shall_stop) {
