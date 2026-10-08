@@ -1550,6 +1550,8 @@ diff -ruN '--exclude=__pycache__' a/src/emu/portmaster/src/main.cpp b/src/emu/po
 +}
 +
 +int main(int argc, char **argv) {
++    using namespace eka2l1;
++
 +    options opt;
 +    if (!parse_args(argc, argv, opt)) {
 +        print_help();
