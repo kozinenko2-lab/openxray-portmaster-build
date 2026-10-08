@@ -44,6 +44,7 @@ jobs:
               echo "SYSROOT=$SYSROOT"
               echo "CMAKE_TOOLCHAIN_FILE=$CMAKE_TOOLCHAIN_FILE"
               "$CC" --version
+              git config --global --add safe.directory /root/workspace/eka2l1
               cmake -S . -B build-h700 -G Ninja \
                 -DCMAKE_BUILD_TYPE=RelWithDebInfo \
                 -DCMAKE_TOOLCHAIN_FILE="$CMAKE_TOOLCHAIN_FILE" \
@@ -58,9 +59,9 @@ jobs:
                 2>&1 | tee build-h700/configure.log
               cmake --build build-h700 --target eka2l1_portmaster -j2 \
                 2>&1 | tee build-h700/build.log
-              file build-h700/src/emu/portmaster/eka2l1_portmaster || true
-              readelf -h build-h700/src/emu/portmaster/eka2l1_portmaster || true
-              readelf -d build-h700/src/emu/portmaster/eka2l1_portmaster || true
+              file build-h700/bin/eka2l1_portmaster || true
+              readelf -h build-h700/bin/eka2l1_portmaster || true
+              readelf -d build-h700/bin/eka2l1_portmaster || true
             '
 
       - name: Stage diagnostics
@@ -70,7 +71,7 @@ jobs:
           mkdir -p ci-artifacts
           cp -f eka2l1/build-h700/configure.log ci-artifacts/ 2>/dev/null || true
           cp -f eka2l1/build-h700/build.log ci-artifacts/ 2>/dev/null || true
-          cp -f eka2l1/build-h700/src/emu/portmaster/eka2l1_portmaster ci-artifacts/ 2>/dev/null || true
+          cp -f eka2l1/build-h700/bin/eka2l1_portmaster ci-artifacts/ 2>/dev/null || true
 
       - name: Upload diagnostics
         if: always()
