@@ -14,6 +14,9 @@ EOF
 apt-get update
 apt-get install -y --no-install-recommends   ca-certificates curl git make ninja-build pkg-config   gcc-8 g++-8 binutils   autoconf automake libtool   libopenal-dev libjpeg-dev libogg-dev libvorbis-dev   libegl1-mesa-dev libgles2-mesa-dev libgl1-mesa-dev   libdrm-dev libgbm-dev libudev-dev   libasound2-dev libpulse-dev libdbus-1-dev   libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxinerama-dev   libwayland-dev libwayland-egl1-mesa   zlib1g-dev
 
+ln -sf /usr/bin/gcc-8 /usr/local/bin/gcc
+ln -sf /usr/bin/g++-8 /usr/local/bin/g++
+export PATH=/usr/local/bin:$PATH
 export CC=gcc-8
 export CXX=g++-8
 
