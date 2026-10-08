@@ -11,6 +11,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: openxray-h700-glibc227
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-24.04-arm
