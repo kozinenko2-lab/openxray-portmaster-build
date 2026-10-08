@@ -7,7 +7,7 @@ on:
     paths:
       - ".github/workflows/build-openxray-portmaster.yml"
       - "patches/**"
-      - "h700/**"
+      - "h700/portmaster-bundled-codecs.patch"
 
 permissions:
   contents: read
