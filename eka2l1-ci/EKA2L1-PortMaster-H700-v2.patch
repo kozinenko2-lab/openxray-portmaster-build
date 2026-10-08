@@ -497,7 +497,8 @@ diff -ruN '--exclude=__pycache__' a/src/emu/drivers/src/graphics/backend/context
 +
 +    bool gl_context_sdl2::clear_current() {
 +        return !window_ || SDL_GL_MakeCurrent(window_, nullptr) == 0;
-+    }+
++    }
++
 +    void gl_context_sdl2::swap_buffers() {
 +        if (window_ && context_) {
 +            SDL_GL_SwapWindow(window_);
@@ -996,7 +997,8 @@ diff -ruN '--exclude=__pycache__' a/src/emu/drivers/src/network/tls_trust_posix.
 +        mbedtls_x509_crt peer;
 +        mbedtls_x509_crt ca;
 +        mbedtls_x509_crt_init(&peer);
-+        mbedtls_x509_crt_init(&ca);+
++        mbedtls_x509_crt_init(&ca);
++
 +        bool parsed = true;
 +        for (const auto &der : chain) {
 +            if (der.empty() || mbedtls_x509_crt_parse_der(&peer, der.data(), der.size()) != 0) {
@@ -1495,7 +1497,8 @@ diff -ruN '--exclude=__pycache__' a/src/emu/portmaster/src/main.cpp b/src/emu/po
 +            LOG_CRITICAL(FRONTEND_CMDLINE, "Failed to create native GLES graphics driver");
 +            state.graphics_failed = true;
 +            state.graphics_ready = true;
-+            state.ready_cv.notify_all();+            return;
++            state.ready_cv.notify_all();
++            return;
 +        }
 +
 +        state.graphics_driver->update_surface_size(state.window->window_fb_size());
