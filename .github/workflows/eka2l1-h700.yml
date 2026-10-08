@@ -28,6 +28,12 @@ jobs:
           patch -p1 < ../eka2l1-ci/EKA2L1-PortMaster-H700-v2.patch
           git status --short
 
+      - name: Cache Arm GCC 11.3
+        uses: actions/cache@v4
+        with:
+          path: .cache/arm-gnu-toolchain-11.3.rel1-x86_64-aarch64-none-linux-gnu.tar.xz
+          key: arm-gcc11.3-rel1-aarch64-linux-gnu-50cdef6c
+
       - name: Build in H700 toolchain
         shell: bash
         run: |
@@ -48,12 +54,15 @@ jobs:
 
               # Current Dynarmic/Oaknut needs a C++20 standard library (<bit>, <compare>).
               # Keep the proven LoveRetro H700 sysroot/SDL stack, but use Arm GCC 11.3.
-              GCC11_ARCHIVE=/tmp/arm-gcc11.tar.xz
+              mkdir -p /root/workspace/.cache /root/workspace/ci-artifacts
+              GCC11_ARCHIVE=/root/workspace/.cache/arm-gnu-toolchain-11.3.rel1-x86_64-aarch64-none-linux-gnu.tar.xz
               GCC11_DIR=/opt/arm-gcc11
               GCC11_URL="https://developer.arm.com/-/media/Files/downloads/gnu/11.3.rel1/binrel/arm-gnu-toolchain-11.3.rel1-x86_64-aarch64-none-linux-gnu.tar.xz"
               GCC11_SHA256="50cdef6c5baddaa00f60502cc8b59cc11065306ae575ad2f51e412a9b2a90364"
               rm -rf "$GCC11_DIR"
-              wget -q --show-progress -O "$GCC11_ARCHIVE" "$GCC11_URL"
+              if [ ! -f "$GCC11_ARCHIVE" ]; then
+                wget -q --show-progress -O "$GCC11_ARCHIVE" "$GCC11_URL"
+              fi
               echo "$GCC11_SHA256  $GCC11_ARCHIVE" | sha256sum -c -
               mkdir -p "$GCC11_DIR"
               tar -xJf "$GCC11_ARCHIVE" -C "$GCC11_DIR" --strip-components=1
@@ -63,16 +72,16 @@ jobs:
               NEW_CC_ROOT="$GCC11_DIR/aarch64-none-linux-gnu"
               "$NEW_CXX" --version
 
-              cat >/tmp/cxx20_probe.cpp <<'EOF'
-              #include <bit>
-              #include <compare>
-              #include <cstdint>
-              constexpr unsigned f(unsigned x) {
-                  return std::popcount(x) + std::countr_zero(x | 1u) + std::rotl(x, 3);
-              }
-              struct X { int v; auto operator<=>(const X&) const = default; };
-              int main() { X a{1}, b{2}; return (a < b && f(3u)) ? 0 : 1; }
-              EOF
+              printf "%s\\n" \
+                "#include <bit>" \
+                "#include <compare>" \
+                "#include <cstdint>" \
+                "constexpr unsigned f(unsigned x) {" \
+                "    return std::popcount(x) + std::countr_zero(x | 1u) + std::rotl(x, 3);" \
+                "}" \
+                "struct X { int v; auto operator<=>(const X&) const = default; };" \
+                "int main() { X a{1}, b{2}; return (a < b && f(3u)) ? 0 : 1; }" \
+                > /tmp/cxx20_probe.cpp
               "$NEW_CXX" --sysroot="$SYSROOT" -std=c++20 -mcpu=cortex-a53 -mtune=cortex-a53 \
                 /tmp/cxx20_probe.cpp -o /tmp/cxx20_probe
               echo "=== C++20 probe version requirements ==="
@@ -83,18 +92,25 @@ jobs:
               "$GCC11_DIR/bin/aarch64-none-linux-gnu-readelf" -V "$LIBSTDCPP" \
                 | grep -E 'GLIBC_[0-9]' | tail -30 || true
 
-              cat >/tmp/eka2l1-gcc11-h700.cmake <<EOF
-              set(CMAKE_SYSTEM_NAME Linux)
-              set(CMAKE_SYSTEM_VERSION 1)
-              set(CMAKE_SYSTEM_PROCESSOR aarch64)
-              set(CMAKE_C_COMPILER "$NEW_CC")
-              set(CMAKE_CXX_COMPILER "$NEW_CXX")
-              set(CMAKE_SYSROOT "$SYSROOT")
-              list(APPEND CMAKE_FIND_ROOT_PATH "$PREFIX_LOCAL" "$SYSROOT" "$NEW_CC_ROOT")
-              set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
-              set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
-              set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
-              EOF
+              {
+                echo "set(CMAKE_SYSTEM_NAME Linux)"
+                echo "set(CMAKE_SYSTEM_VERSION 1)"
+                echo "set(CMAKE_SYSTEM_PROCESSOR aarch64)"
+                echo "set(CMAKE_C_COMPILER \"$NEW_CC\")"
+                echo "set(CMAKE_CXX_COMPILER \"$NEW_CXX\")"
+                echo "set(CMAKE_SYSROOT \"$SYSROOT\")"
+                echo "list(APPEND CMAKE_FIND_ROOT_PATH \"$PREFIX_LOCAL\" \"$SYSROOT\" \"$NEW_CC_ROOT\")"
+                echo "set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)"
+                echo "set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)"
+                echo "set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)"
+              } > /tmp/eka2l1-gcc11-h700.cmake
+
+              # Bundle the matching GCC 11 runtime; H700 has glibc 2.35 but may
+              # not ship a new-enough GLIBCXX symbol set.
+              LIBSTDCPP_REAL="$("$NEW_CXX" --print-file-name=libstdc++.so.6)"
+              LIBGCC_REAL="$("$NEW_CXX" --print-file-name=libgcc_s.so.1)"
+              cp -L "$LIBSTDCPP_REAL" /root/workspace/ci-artifacts/libstdc++.so.6
+              cp -L "$LIBGCC_REAL" /root/workspace/ci-artifacts/libgcc_s.so.1
 
               mkdir -p build-h700
               cmake -S . -B build-h700 -G Ninja \
@@ -124,12 +140,6 @@ jobs:
           cp -f eka2l1/build-h700/configure.log ci-artifacts/ 2>/dev/null || true
           cp -f eka2l1/build-h700/build.log ci-artifacts/ 2>/dev/null || true
           cp -f eka2l1/build-h700/bin/eka2l1_portmaster ci-artifacts/ 2>/dev/null || true
-          docker run --rm -v "$PWD:/root/workspace" ghcr.io/loveretro/h700-toolchain:latest bash -lc '
-            if [ -f /opt/arm-gcc11/aarch64-none-linux-gnu/lib64/libstdc++.so.6 ]; then
-              cp -L /opt/arm-gcc11/aarch64-none-linux-gnu/lib64/libstdc++.so.6 /root/workspace/ci-artifacts/
-              cp -L /opt/arm-gcc11/aarch64-none-linux-gnu/lib64/libgcc_s.so.1 /root/workspace/ci-artifacts/ 2>/dev/null || true
-            fi
-          ' || true
 
       - name: Upload diagnostics
         if: always()
