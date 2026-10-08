@@ -1,0 +1,1000 @@
+diff -ruN '--exclude=__pycache__' a/BUILDING.md b/BUILDING.md
+--- a/BUILDING.md	2026-10-05 22:35:46.000000000 +0000
++++ b/BUILDING.md	2026-10-08 03:24:32.583834462 +0000
+@@ -67,3 +67,30 @@
+ Notable environment variables (see the script header for the full list): `EKA2L1_IOS_CONFIGURATION` (Debug by default; use `Release` for performance/regression testing), `EKA2L1_IOS_DEPLOYMENT_TARGET` (default 16.0), `EKA2L1_IOS_DEVELOPMENT_TEAM` and `EKA2L1_IOS_DEVICE` (device signing/install). The dynarmic JIT is compiled in for simulator and unsigned-device builds but forced off for signed device/archive builds, since App Store/TestFlight processes can never map executable pages — the emulator falls back to the dyncom interpreter there.
+ 
+ On iOS the following options are always forced OFF regardless of the command line: `EKA2L1_BUILD_TOOLS`, `EKA2L1_BUILD_TESTS`, `EKA2L1_BUILD_VULKAN_BACKEND`, `EKA2L1_BUILD_PATCH`, `EKA2L1_DEPLOY_DMG`, `EKA2L1_ENABLE_DISCORD_RICH_PRESENCE`. `EKA2L1_ENABLE_SCRIPTING_ABILITY` stays ON for the built-in native patches, but `EKA2L1_SCRIPTING_LUA` is forced OFF: the LuaJIT runtime needs writable-executable memory, which iOS does not allow. 
++
++## PortMaster / Anbernic H700 (work in progress)
++
++This source tree contains an experimental Qt-free frontend selected with
++`-DEKA2L1_PORTMASTER=ON`.  It uses SDL2 for the native window/controller path
++and requests **OpenGL ES 3.x directly before `SDL_CreateWindow`**.  Do not put
++GL4ES ahead of the native Mali EGL/GLES libraries for this target.
++
++Recommended configure shape for the H700 cross toolchain/sysroot:
++
++```sh
++cmake -S . -B build-h700 -G Ninja \
++  -DCMAKE_BUILD_TYPE=RelWithDebInfo \
++  -DCMAKE_TOOLCHAIN_FILE=/path/to/h700-toolchain.cmake \
++  -DEKA2L1_PORTMASTER=ON
++cmake --build build-h700 --target eka2l1_portmaster
++```
++
++The produced runtime copies the GLES shaders and two controller databases next
++to the executable. `resources/gamecontrollerdb-h700.txt` contains the measured
++H700 built-in `ANBERNIC-keys` mapping with both analogue sticks, stick clicks
++and L2/R2. Set `EKA2L1_INPUT_DEBUG=1` to log the detected GUID and the SDL
++controller mapping selected at runtime.
++
++The GitHub source ZIP does **not** contain the contents of EKA2L1's git
++submodules. Before a real build, use a recursive clone or initialise every
++submodule with `git submodule update --init --recursive`.
+diff -ruN '--exclude=__pycache__' a/CMakeLists.txt b/CMakeLists.txt
+--- a/CMakeLists.txt	2026-10-05 22:35:46.000000000 +0000
++++ b/CMakeLists.txt	2026-10-08 03:10:56.484928125 +0000
+@@ -25,6 +25,17 @@
+ option(EKA2L1_BUILD_PATCH "Enable building Symbian's DLL patches using Symbian SDK" OFF)
+ option(EKA2L1_ENABLE_DISCORD_RICH_PRESENCE "Enable support for Discord Rich Presence" OFF)
+ option(EKA2L1_ENABLE_QT_CAMERA "Build the desktop camera backend on Qt Multimedia" ON)
++option(EKA2L1_PORTMASTER "Build the SDL2/OpenGL ES frontend for PortMaster handhelds" OFF)
++
++if (EKA2L1_PORTMASTER)
++    set(EKA2L1_BUILD_TOOLS OFF CACHE BOOL "Disabled for PortMaster" FORCE)
++    set(EKA2L1_BUILD_TESTS OFF CACHE BOOL "Disabled for PortMaster" FORCE)
++    set(EKA2L1_ENABLE_SCRIPTING_ABILITY OFF CACHE BOOL "Disabled for initial PortMaster bring-up" FORCE)
++    set(EKA2L1_ENABLE_QT_CAMERA OFF CACHE BOOL "Qt is not used by PortMaster" FORCE)
++    set(EKA2L1_BUILD_VULKAN_BACKEND OFF CACHE BOOL "H700 PortMaster uses native GLES" FORCE)
++    add_compile_definitions(EKA2L1_PORTMASTER=1)
++    message(STATUS "EKA2L1 PortMaster frontend enabled (SDL2 + native OpenGL ES)")
++endif()
+ 
+ # Runtime sanitizer for debugging builds: "address" (ASan, memory errors) or
+ # "thread" (TSan, data races and lock-order inversions). Empty disables both.
+diff -ruN '--exclude=__pycache__' a/PORTMASTER_H700_NOTES.md b/PORTMASTER_H700_NOTES.md
+--- a/PORTMASTER_H700_NOTES.md	1970-01-01 00:00:00.000000000 +0000
++++ b/PORTMASTER_H700_NOTES.md	2026-10-08 03:24:32.591834536 +0000
+@@ -0,0 +1,40 @@
++# EKA2L1 PortMaster / H700 port notes
++
++## Current architecture
++
++- Fresh upstream EKA2L1 core.
++- Qt is excluded when `EKA2L1_PORTMASTER=ON`.
++- SDL2 owns the native fullscreen window.
++- The graphics context is requested as native OpenGL ES 3.x before window creation.
++- `gl_context_sdl2` uses `SDL_GL_CreateContext`, `SDL_GL_SwapWindow` and `SDL_GL_GetProcAddress`.
++- No GLX/X11/Wayland requirement in the PortMaster target.
++- System CA trust uses mbedTLS and the host CA bundle instead of Qt Network.
++
++## Dual-stick work imported conceptually from EKA2L1-DualStick
++
++The Android-specific Java code was not copied into Linux.  Its useful input ideas
++were reimplemented in the common SDL2 controller backend:
++
++- real dead-zone before normalisation;
++- independent left and right sticks;
++- eight digital stick directions exposed to EKA2L1's existing button map;
++- press/release hysteresis to avoid chatter near the threshold;
++- stable controller identity via SDL joystick instance IDs;
++- deterministic H700 controller mapping, including both sticks, stick clicks and triggers.
++
++SDL_GameController performs the platform-axis canonicalisation that the Android
++DualStick code had to implement manually (RX/RY versus Z/RZ).
++
++## H700 graphics rule
++
++Never try desktop OpenGL first on the legacy Mali/fbdev stack. Request an ES profile
++before SDL creates the OpenGL window. The current target asks for GLES 3.0, matching
++upstream EKA2L1's `#version 300 es` shaders while remaining compatible with Mali's
++higher ES 3.x capability.
++
++## Next iteration
++
++1. Cross-configure against the real H700 sysroot/toolchain.
++2. Fix compile/link gaps from missing submodules and target libraries.
++3. Produce an ARM64 probe/runtime binary.
++4. Run on-device graphics + controller diagnostics before enabling launcher/menu work.
+diff -ruN '--exclude=__pycache__' a/PORTMASTER_SUBMODULES.lock b/PORTMASTER_SUBMODULES.lock
+--- a/PORTMASTER_SUBMODULES.lock	1970-01-01 00:00:00.000000000 +0000
++++ b/PORTMASTER_SUBMODULES.lock	2026-10-08 03:25:55.071272189 +0000
+@@ -0,0 +1,42 @@
++# EKA2L1 upstream 11f5b6cd141c0884a130ee45743f1f5e17bb1783
++# path<TAB>sha<TAB>url
++src/emu/drivers/resources/upscale	49dd304cb97e7c0871256f2bafba7b6fd41511cb	https://github.com/EKA2L1/upscale-shaders
++src/external/Catch2	216713a4066b79d9803d374f261ccb30c0fb451f	https://github.com/catchorg/Catch2/
++src/external/RectangleBinPack	83e7e1132d93777e3732dfaae26b0f3703be2036	https://github.com/juj/RectangleBinPack
++src/external/SDL_GameControllerDB	a113e7fa25cc13ca6131b20a23568dc42c8a7dab	https://github.com/gabomdq/SDL_GameControllerDB
++src/external/TinySoundFont	e86d986ed6ccb93b4ee41d2de656c49c721b18db	https://github.com/schellingb/TinySoundFont
++src/external/capstone	52c66920fc7bfa15fd9626dfd9f646c698aaa99b	https://github.com/capstone-engine/capstone
++src/external/cubeb	d512bfa07a327e0ae7e7aef892dcce01cbeaa67c	https://github.com/kinetiknz/cubeb
++src/external/discord-rpc	963aa9f3e5ce81a4682c6ca3d136cddda614db33	https://github.com/discord/discord-rpc
++src/external/dynarmic	2375a96d2848401986ff65c3e5c37aeca80253f5	https://github.com/EKA2L1/dynarmic
++src/external/ext-boost	717900f94b5e9acbc69377cdeee9d7f952ff725c	https://github.com/yuzu-mirror/ext-boost
++src/external/ffmpeg	a6e15238fb8553338d58b12c2aa1c2fc293d2fa5	https://github.com/eka2l1/ffmpeg
++src/external/fmt	40626af88bd7df9a5fb80be7b25ac85b122d6c21	https://github.com/fmtlib/fmt
++src/external/freetype	f42ce25563b73fed0123d18a2556b9ba01d2c76b	https://github.com/freetype/freetype
++src/external/glfw	e65de2941c056ee5833b4dab3db36b297b53aa14	https://github.com/glfw/glfw
++src/external/glm	8d1fd52e5ab5590e2c81768ace50c72bae28f2ed	https://github.com/g-truc/glm
++src/external/libarchive	27cbc7827172698143e440801fc0ba39ccb4f1f5	https://github.com/libarchive/libarchive
++src/external/libcxxabi	ce3db128f9e4d6d19d1cdbe39bb45fcc64a5adb0	https://github.com/llvm-mirror/libcxxabi
++src/external/libfat	ea55c7a718780057e7fe0224d7423c4279fd3df7	https://github.com/Vita3K/libfat16/
++src/external/libtess2	fc52516467dfa124bdd967c15c7cf9faf02a34ca	https://github.com/memononen/libtess2
++src/external/libuv	d4eb276eea7cb19a888fe97d7759d97c7092ad02	https://github.com/libuv/libuv
++src/external/luajit	0d313b243194a0b8d2399d8b549ca5a0ff234db5	https://github.com/luajit/luajit
++src/external/luajit-android-src	bfcb74ed36d733bae249fe7642b7324a56be88d0	https://github.com/luajit/luajit
++src/external/luajit-cmake	7c794d89df3c6421eb7e62c5e365660559d0e8f6	https://github.com/zhaozg/luajit-cmake
++src/external/lunasvg	51c65dc8b77986513c2483c9b0b942b38e6bf197	https://github.com/EKA2L1/lunasvg
++src/external/mbedtls	068ff080b369adfac81509f9b57b2afabaf82dc5	https://github.com/ARMmbed/mbedtls
++src/external/microprofile	b910f4df7f670affec65c1a4dacbf6018c9e0f1b	https://github.com/jonasmr/microprofile/
++src/external/miniBAE	4a63a5d1a5ba50b71445b6a4b1efdd139872541b	https://github.com/EKA2L1/miniBAE/
++src/external/miniupnp	fa42d8f9316bf9c1ca14317e5a6e0d4a21365629	https://github.com/miniupnp/miniupnp
++src/external/pugixml	5e64076af9691ce8100aedf7a61cb338f2596151	https://github.com/zeux/pugixml
++src/external/rapidjson	24b5e7a8b27f42fa16b96fc70aade9106cf7102f	https://github.com/Tencent/rapidjson
++src/external/re2	11073deb73b3d01018308863c0bcdfd0d51d3e70	https://github.com/google/re2
++src/external/sdl2-cmake-scripts	e037fb54f32973343fada6a051d3a3f8adf3a4a0	https://github.com/tcbrindle/sdl2-cmake-scripts
++src/external/spdlog	79524ddd08a4ec981b7fea76afd08ee05f83755d	https://github.com/gabime/spdlog
++src/external/stb	f54acd4e13430c5122cab4ca657705c84aa61b08	https://github.com/nothings/stb
++src/external/thread-pool	6790920f61ab3e928ddaea835ab6a803d467f41d	https://github.com/bshoshany/thread-pool
++src/external/uvw	cf0f8c6fd4084900646b7c83b4682a12be76f10e	https://github.com/skypjack/uvw/
++src/external/xxHash	ea9c098e93d07febe20bcf376e0f83f4acbe670f	https://github.com/Cyan4973/xxHash
++src/external/xz	4b73f2ec19a99ef465282fbce633e8deb33691b3	https://github.com/tukaani-project/xz
++src/external/yaml-cpp	99222fc938ed9841098782928723d6bdeaa2a0b2	https://github.com/jbeder/yaml-cpp
++src/external/zlib	51b7f2abdade71cd9bb0e7a373ef2610ec6f9daf	https://github.com/madler/zlib
+diff -ruN '--exclude=__pycache__' a/portmaster/EKA2L1.sh b/portmaster/EKA2L1.sh
+--- a/portmaster/EKA2L1.sh	1970-01-01 00:00:00.000000000 +0000
++++ b/portmaster/EKA2L1.sh	2026-10-08 03:20:26.677251891 +0000
+@@ -0,0 +1,24 @@
++#!/bin/sh
++# EKA2L1 PortMaster / H700 launcher
++GAMEDIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
++cd "$GAMEDIR" || exit 1
++
++export HOME="$GAMEDIR"
++export XDG_CONFIG_HOME="$GAMEDIR/config"
++export XDG_CACHE_HOME="$GAMEDIR/cache"
++mkdir -p "$XDG_CONFIG_HOME" "$XDG_CACHE_HOME"
++
++# Some H700 firmware SDL builds require the vendor fbdev video backend.  Leave
++# autodetection alone by default, but allow the port package/CFW to force it:
++#   EKA2L1_SDL_VIDEODRIVER=mali ./EKA2L1.sh 0x12345678
++if [ -n "${EKA2L1_SDL_VIDEODRIVER:-}" ]; then
++    export SDL_VIDEODRIVER="$EKA2L1_SDL_VIDEODRIVER"
++fi
++
++UID_ARG="${1:-${EKA2L1_APP_UID:-}}"
++if [ -z "$UID_ARG" ]; then
++    echo "No Symbian app UID supplied. Installed apps:" >> "$GAMEDIR/EKA2L1.log"
++    exec "$GAMEDIR/eka2l1_portmaster" --list-apps >> "$GAMEDIR/EKA2L1.log" 2>&1
++fi
++
++exec "$GAMEDIR/eka2l1_portmaster" --uid "$UID_ARG" >> "$GAMEDIR/EKA2L1.log" 2>&1
+diff -ruN '--exclude=__pycache__' a/portmaster/ITERATION_2_MANIFEST.txt b/portmaster/ITERATION_2_MANIFEST.txt
+--- a/portmaster/ITERATION_2_MANIFEST.txt	1970-01-01 00:00:00.000000000 +0000
++++ b/portmaster/ITERATION_2_MANIFEST.txt	2026-10-08 03:27:06.259224734 +0000
+@@ -0,0 +1,34 @@
++EKA2L1 PortMaster / H700 - iteration 2
++Base source: user-provided EKA2L1-master.zip
++Matched upstream tree: EKA2L1/EKA2L1 11f5b6cd141c0884a130ee45743f1f5e17bb1783
++
++Implemented:
++- EKA2L1_PORTMASTER CMake mode; Qt frontend disabled for this target.
++- SDL2 fullscreen window frontend.
++- Native OpenGL ES 3.0 context requested before SDL_CreateWindow.
++- No GLX/X11/Wayland requirement in the PortMaster driver branch.
++- GLES procedure loading through SDL_GL_GetProcAddress.
++- Qt-free POSIX system certificate verification using mbedTLS.
++- Minimal `eka2l1_portmaster` CLI: --list-apps and --uid.
++- PortMaster shell launcher with log in the port directory.
++- H700 measured SDL controller mapping with both sticks/triggers/stick-clicks.
++- DualStick-derived input improvements: deadzone, independent left/right sticks,
++  digital direction events, press/release hysteresis, trigger hysteresis,
++  stable SDL joystick instance IDs and hotplug cleanup.
++- Fixed SDL button enum mapping for LEFTSTICK/RIGHTSTICK/LB/RB.
++- Graphics and controller diagnostics in logs.
++- Exact submodule lock file + source-ZIP recovery script.
++
++Validation performed in this iteration:
++- `bash -n scripts/fetch_portmaster_submodules.sh`: PASS
++- `sh -n portmaster/EKA2L1.sh`: PASS
++- Root CMake recognizes `EKA2L1_PORTMASTER`: PASS
++- Full CMake configure: BLOCKED by the supplied GitHub ZIP having 40 missing
++  git submodules and by host environment lacking SDL2 development CMake data.
++  This is expected and is not treated as a PortMaster source error.
++
++Next build gate:
++1. `./scripts/fetch_portmaster_submodules.sh`
++2. configure with the real H700 ARM64 sysroot/toolchain
++3. build target `eka2l1_portmaster`
++4. run on device and inspect EKA2L1.log for SDL/GL/controller diagnostics
+diff -ruN '--exclude=__pycache__' a/portmaster/README_EN.md b/portmaster/README_EN.md
+--- a/portmaster/README_EN.md	1970-01-01 00:00:00.000000000 +0000
++++ b/portmaster/README_EN.md	2026-10-08 03:26:33.470364886 +0000
+@@ -0,0 +1,21 @@
++# EKA2L1 PortMaster / H700 — iteration 2
++
++This branch adds a Qt-free SDL2/native-GLES frontend to current EKA2L1 for ARM64 PortMaster handhelds, with H700 as the primary target.
++
++Main changes: `EKA2L1_PORTMASTER`, SDL2 window/context, GLES 3 requested before window creation, no GLX/X11/Wayland in this mode, SDL-based GL procedure loading, Qt-free POSIX TLS trust, CLI launch by Symbian UID, and dual-stick input refinements inspired by `Andiweli/EKA2L1-DualStick` (deadzone, hysteresis, independent left/right digital directions and stable triggers).
++
++The supplied GitHub ZIP has 40 empty submodule directories. Run:
++
++```sh
++./scripts/fetch_portmaster_submodules.sh
++```
++
++The script uses `SUBMODULES.lock` to restore the exact gitlink revisions for upstream commit `11f5b6cd141c0884a130ee45743f1f5e17bb1783` even when the source tree itself has no `.git` directory.
++
++Build entry point:
++
++```sh
++cmake -S . -B build-h700 -DEKA2L1_PORTMASTER=ON -DCMAKE_BUILD_TYPE=Release \
++  -DCMAKE_TOOLCHAIN_FILE=/path/to/h700-toolchain.cmake
++cmake --build build-h700 --target eka2l1_portmaster -j4
++```
+diff -ruN '--exclude=__pycache__' a/portmaster/README_RU.md b/portmaster/README_RU.md
+--- a/portmaster/README_RU.md	1970-01-01 00:00:00.000000000 +0000
++++ b/portmaster/README_RU.md	2026-10-08 03:26:33.470249944 +0000
+@@ -0,0 +1,66 @@
++# EKA2L1 PortMaster / H700 — итерация 2
++
++Эта ветка сделана поверх свежего EKA2L1 и предназначена для ARM64 handheld-консолей PortMaster, в первую очередь Anbernic на Allwinner H700.
++
++## Что изменено
++
++- Добавлен CMake-режим `EKA2L1_PORTMASTER`.
++- Qt frontend полностью исключается из PortMaster-сборки.
++- Linux GLX/X11/Wayland context не используется в PortMaster-режиме.
++- Добавлен SDL2 frontend и `gl_context_sdl2`.
++- SDL запрашивает **нативный OpenGL ES 3.0 профиль до создания окна**, чтобы H700 не пытался сначала открыть desktop OpenGL/GL4ES.
++- GLES-функции загружаются через `SDL_GL_GetProcAddress`.
++- Добавлен POSIX TLS trust backend без Qt Network.
++- Добавлен минимальный CLI frontend `eka2l1_portmaster` для запуска установленного Symbian приложения по UID.
++- Данные и лог PortMaster сохраняются рядом с портом.
++
++## DualStick
++
++Из `Andiweli/EKA2L1-DualStick` перенесены полезные идеи управления двумя стиками, но без Android/Java-зависимостей:
++
++- оба стика обслуживаются через `SDL_GameController`;
++- deadzone 20%;
++- отдельные пороги press/release (hysteresis), чтобы направление не дребезжало около порога;
++- левый и правый стик по-прежнему генерируют отдельные четыре цифровых направления каждый;
++- аналоговые значения обоих стиков остаются доступны через `on_joy_move`;
++- триггеры также получили hysteresis;
++- исправлено переподключение контроллера и безопасная остановка polling thread.
++
++На Android DualStick отдельно определяет физические пары RX/RY и Z/RZ. В Linux это должен делать SDL GameController mapping layer, поэтому PortMaster-код принимает уже нормализованные `LEFTX/LEFTY/RIGHTX/RIGHTY`. Это лучше переносится между разными H700 CFW.
++
++## Запуск
++
++После сборки:
++
++```sh
++./eka2l1_portmaster --list-apps
++./eka2l1_portmaster --uid 0x12345678
++```
++
++Либо используйте `portmaster/EKA2L1.sh`. UID можно передать первым аргументом или через `EKA2L1_APP_UID`.
++
++Для прошивок, где SDL не выбирает H700 fbdev backend автоматически:
++
++```sh
++EKA2L1_SDL_VIDEODRIVER=mali ./EKA2L1.sh 0x12345678
++```
++
++Принудительно `mali` по умолчанию не включён: MuOS/Knulli/другие CFW могут использовать другой SDL video backend.
++
++## Важное про исходный ZIP
++
++Переданный `EKA2L1-master.zip` не содержит содержимое git submodules: 39 каталогов `src/external/*` пустые. Поэтому полная сборка из этого ZIP без подготовки невозможна.
++
++Файлы `PORTMASTER_SUBMODULES.lock` и `scripts/fetch_portmaster_submodules.sh` содержат точные gitlink SHA для upstream-коммита `11f5b6cd141c0884a130ee45743f1f5e17bb1783` и позволяют восстановить submodules даже без `.git` суперпроекта:
++
++```sh
++./scripts/fetch_portmaster_submodules.sh
++```
++
++## Следующая итерация
++
++1. Подтянуть submodules.
++2. Запустить ARM64 cross-CMake с H700 sysroot/toolchain.
++3. Исправить реальные ошибки компиляции.
++4. Собрать первый `eka2l1_portmaster` + runtime assets.
++5. На консоли снять `GL_VENDOR/GL_RENDERER/GL_VERSION`, SDL video driver и GUID/оси контроллера.
+diff -ruN '--exclude=__pycache__' a/scripts/fetch_portmaster_submodules.sh b/scripts/fetch_portmaster_submodules.sh
+--- a/scripts/fetch_portmaster_submodules.sh	1970-01-01 00:00:00.000000000 +0000
++++ b/scripts/fetch_portmaster_submodules.sh	2026-10-08 03:25:55.071346219 +0000
+@@ -0,0 +1,36 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
++LOCK="$ROOT/PORTMASTER_SUBMODULES.lock"
++
++if ! command -v git >/dev/null 2>&1; then
++  echo "git is required" >&2
++  exit 1
++fi
++
++while IFS=$'\t' read -r rel sha url; do
++  case "$rel" in ''|'#'*) continue ;; esac
++  dst="$ROOT/$rel"
++  echo "==> $rel @ $sha"
++
++  if [ -d "$dst/.git" ] || [ -f "$dst/.git" ]; then
++    git -C "$dst" remote get-url origin >/dev/null 2>&1 || git -C "$dst" remote add origin "$url"
++  else
++    rm -rf "$dst"
++    mkdir -p "$dst"
++    git -C "$dst" init -q
++    git -C "$dst" remote add origin "$url"
++  fi
++
++  if ! git -C "$dst" cat-file -e "$sha^{commit}" 2>/dev/null; then
++    git -C "$dst" fetch -q --depth 1 origin "$sha"
++  fi
++  git -C "$dst" checkout -q --detach "$sha"
++  # Some top-level dependencies (notably dynarmic) have their own pinned
++  # submodules. Restore them recursively from that dependency's metadata.
++  git -C "$dst" submodule update --init --recursive --depth 1
++
++done < "$LOCK"
++
++echo "All locked EKA2L1 submodules are present."
+diff -ruN '--exclude=__pycache__' a/src/emu/CMakeLists.txt b/src/emu/CMakeLists.txt
+--- a/src/emu/CMakeLists.txt	2026-10-05 22:35:46.000000000 +0000
++++ b/src/emu/CMakeLists.txt	2026-10-08 03:10:56.485055055 +0000
+@@ -53,7 +53,9 @@
+ add_subdirectory(utils)
+ add_subdirectory(vfs)
+ 
+-if (ANDROID)
++if (EKA2L1_PORTMASTER)
++    add_subdirectory(portmaster)
++elseif (ANDROID)
+     include_directories(android/app/src/main)
+     add_subdirectory(android/app/src/main/cpp)
+ elseif (EKA2L1_IOS)
+diff -ruN '--exclude=__pycache__' a/src/emu/drivers/CMakeLists.txt b/src/emu/drivers/CMakeLists.txt
+--- a/src/emu/drivers/CMakeLists.txt	2026-10-05 22:35:46.000000000 +0000
++++ b/src/emu/drivers/CMakeLists.txt	2026-10-08 03:10:56.485398699 +0000
+@@ -221,6 +221,14 @@
+         src/graphics/backend/context_egl_android.cpp
+         src/graphics/backend/context_egl_android.h
+     )
++elseif(EKA2L1_PORTMASTER)
++    # PortMaster/H700 intentionally avoids GLX, X11 and Wayland. SDL selects
++    # the platform video backend (mali/fbdev, kmsdrm, etc.) and creates a
++    # native OpenGL ES context.
++    target_sources(drivers PRIVATE
++        src/graphics/backend/context_sdl2.cpp
++        src/graphics/backend/context_sdl2.h
++    )
+ else()
+     find_package(X11 REQUIRED)
+     find_package(OpenGL REQUIRED)
+@@ -261,6 +269,8 @@
+     target_link_libraries(drivers PRIVATE crypt32)
+ elseif (ANDROID)
+     target_sources(drivers PRIVATE src/network/tls_trust_android.cpp)
++elseif (EKA2L1_PORTMASTER)
++    target_sources(drivers PRIVATE src/network/tls_trust_posix.cpp)
+ else()
+     find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Network)
+     find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Network)
+diff -ruN '--exclude=__pycache__' a/src/emu/drivers/include/drivers/input/backend/emu_controller_sdl2.h b/src/emu/drivers/include/drivers/input/backend/emu_controller_sdl2.h
+--- a/src/emu/drivers/include/drivers/input/backend/emu_controller_sdl2.h	2026-10-05 22:35:46.000000000 +0000
++++ b/src/emu/drivers/include/drivers/input/backend/emu_controller_sdl2.h	2026-10-08 03:23:49.457788702 +0000
+@@ -33,17 +33,22 @@
+             // true if pressed
+             std::vector<bool> button;
+             std::vector<float> axis;
++            std::vector<bool> axis_positive;
++            std::vector<bool> axis_negative;
+ 
+             SDL_GameController *controller;
+             SDL_JoystickGUID guid;
+         };
+ 
+-        std::map<int, gamepad_state> gamepads;
++        std::map<SDL_JoystickID, gamepad_state> gamepads;
+         std::atomic<bool> shall_stop;
+         std::unique_ptr<std::thread> polling_thread;
+ 
+         const float ANALOG_MIN_DIFFERENCE;
+         const float ANALOG_ACKNOWLEDGE_THRESHOLD;
++        const float ANALOG_RELEASE_THRESHOLD;
++        const float ANALOG_DEADZONE;
++        const float TRIGGER_RELEASE_THRESHOLD;
+ 
+         void poll();
+         void run();
+diff -ruN '--exclude=__pycache__' a/src/emu/drivers/src/graphics/backend/context_sdl2.cpp b/src/emu/drivers/src/graphics/backend/context_sdl2.cpp
+--- a/src/emu/drivers/src/graphics/backend/context_sdl2.cpp	1970-01-01 00:00:00.000000000 +0000
++++ b/src/emu/drivers/src/graphics/backend/context_sdl2.cpp	2026-10-08 03:12:17.895754753 +0000
+@@ -0,0 +1,111 @@
++// Copyright (c) 2026 EKA2L1 PortMaster contributors.
++// SPDX-License-Identifier: GPL-3.0-or-later
++
++#include "context_sdl2.h"
++#include <common/log.h>
++
++namespace eka2l1::drivers::graphics {
++    static void set_gles_attributes(bool share) {
++        // Important for H700: request ES before SDL creates/loads the GL path.
++        SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
++        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
++        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
++        SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
++        SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 0);
++        SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 0);
++        SDL_GL_SetAttribute(SDL_GL_SHARE_WITH_CURRENT_CONTEXT, share ? 1 : 0);
++    }
++
++    gl_context_sdl2::gl_context_sdl2(const window_system_info &wsi, bool, bool)
++        : window_(static_cast<SDL_Window *>(wsi.render_window)) {
++        m_opengl_mode = mode::opengl_es;
++        if (!create(nullptr)) {
++            LOG_CRITICAL(DRIVER_GRAPHICS, "PortMaster SDL GLES context creation failed: {}", SDL_GetError());
++        }
++    }
++
++    gl_context_sdl2::gl_context_sdl2(SDL_Window *window, SDL_GLContext share_with)
++        : window_(window) {
++        m_opengl_mode = mode::opengl_es;
++        m_is_shared = true;
++        if (!create(share_with)) {
++            LOG_CRITICAL(DRIVER_GRAPHICS, "PortMaster shared SDL GLES context creation failed: {}", SDL_GetError());
++        }
++    }
++
++    bool gl_context_sdl2::create(SDL_GLContext share_with) {
++        if (!window_) {
++            return false;
++        }
++
++        if (share_with) {
++            if (SDL_GL_MakeCurrent(window_, share_with) != 0) {
++                return false;
++            }
++        }
++
++        set_gles_attributes(share_with != nullptr);
++        context_ = SDL_GL_CreateContext(window_);
++        if (!context_) {
++            return false;
++        }
++
++        if (SDL_GL_MakeCurrent(window_, context_) != 0) {
++            SDL_GL_DeleteContext(context_);
++            context_ = nullptr;
++            return false;
++        }
++
++        int width = 0;
++        int height = 0;
++        SDL_GL_GetDrawableSize(window_, &width, &height);
++        m_backbuffer_width = static_cast<std::uint32_t>(width > 0 ? width : 1);
++        m_backbuffer_height = static_cast<std::uint32_t>(height > 0 ? height : 1);
++        return true;
++    }
++
++    gl_context_sdl2::~gl_context_sdl2() {
++        if (context_) {
++            if (SDL_GL_GetCurrentContext() == context_) {
++                clear_current();
++            }
++            SDL_GL_DeleteContext(context_);
++        }
++    }
++
++    bool gl_context_sdl2::make_current() {
++        return window_ && context_ && SDL_GL_MakeCurrent(window_, context_) == 0;
++    }
++
++    bool gl_context_sdl2::clear_current() {
++        return !window_ || SDL_GL_MakeCurrent(window_, nullptr) == 0;
++    }
++
++    void gl_context_sdl2::swap_buffers() {
++        if (window_ && context_) {
++            SDL_GL_SwapWindow(window_);
++        }
++    }
++
++    void gl_context_sdl2::update(const std::uint32_t new_width, const std::uint32_t new_height) {
++        m_backbuffer_width = new_width;
++        m_backbuffer_height = new_height;
++    }
++
++    void gl_context_sdl2::set_swap_interval(const std::int32_t interval) {
++        if (SDL_GL_SetSwapInterval(interval) != 0) {
++            LOG_WARN(DRIVER_GRAPHICS, "SDL_GL_SetSwapInterval({}) failed: {}", interval, SDL_GetError());
++        }
++    }
++
++    bool gl_context_sdl2::is_headless() const {
++        return window_ == nullptr;
++    }
++
++    std::unique_ptr<gl_context> gl_context_sdl2::create_shared_context() {
++        if (!window_ || !context_) {
++            return nullptr;
++        }
++        return std::unique_ptr<gl_context>(new gl_context_sdl2(window_, context_));
++    }
++}
+diff -ruN '--exclude=__pycache__' a/src/emu/drivers/src/graphics/backend/context_sdl2.h b/src/emu/drivers/src/graphics/backend/context_sdl2.h
+--- a/src/emu/drivers/src/graphics/backend/context_sdl2.h	1970-01-01 00:00:00.000000000 +0000
++++ b/src/emu/drivers/src/graphics/backend/context_sdl2.h	2026-10-08 03:12:17.895020861 +0000
+@@ -0,0 +1,30 @@
++// Copyright (c) 2026 EKA2L1 PortMaster contributors.
++// SPDX-License-Identifier: GPL-3.0-or-later
++#pragma once
++
++#include <drivers/graphics/context.h>
++#include <drivers/graphics/common.h>
++#include <SDL.h>
++
++namespace eka2l1::drivers::graphics {
++    class gl_context_sdl2 final : public gl_context {
++    public:
++        gl_context_sdl2(const window_system_info &wsi, bool stereo, bool core);
++        ~gl_context_sdl2() override;
++
++        bool make_current() override;
++        bool clear_current() override;
++        void swap_buffers() override;
++        void update(std::uint32_t new_width, std::uint32_t new_height) override;
++        void set_swap_interval(std::int32_t interval) override;
++        bool is_headless() const override;
++        std::unique_ptr<gl_context> create_shared_context() override;
++
++    private:
++        gl_context_sdl2(SDL_Window *window, SDL_GLContext share_with);
++        bool create(SDL_GLContext share_with);
++
++        SDL_Window *window_ = nullptr;
++        SDL_GLContext context_ = nullptr;
++    };
++}
+diff -ruN '--exclude=__pycache__' a/src/emu/drivers/src/graphics/backend/ogl/graphics_ogl.cpp b/src/emu/drivers/src/graphics/backend/ogl/graphics_ogl.cpp
+--- a/src/emu/drivers/src/graphics/backend/ogl/graphics_ogl.cpp	2026-10-05 22:35:46.000000000 +0000
++++ b/src/emu/drivers/src/graphics/backend/ogl/graphics_ogl.cpp	2026-10-08 03:23:34.979666356 +0000
+@@ -38,6 +38,8 @@
+ 
+ #if EKA2L1_PLATFORM(ANDROID)
+ #include <EGL/egl.h>
++#elif defined(EKA2L1_PORTMASTER)
++#include <SDL.h>
+ #endif
+ 
+ #define IMGUI_IMPL_OPENGL_LOADER_GLAD
+@@ -65,6 +67,11 @@
+                     LOG_CRITICAL(DRIVER_GRAPHICS, "gladLoadGLES2Loader() failed");
+                     return;
+                 }
++#elif defined(EKA2L1_PORTMASTER)
++                if (!gladLoadGLES2Loader((GLADloadproc) SDL_GL_GetProcAddress)) {
++                    LOG_CRITICAL(DRIVER_GRAPHICS, "gladLoadGLES2Loader(SDL_GL_GetProcAddress) failed");
++                    return;
++                }
+ #endif
+ 
+                 break;
+@@ -100,6 +107,16 @@
+         context_->make_current();
+ 
+         init_gl_graphics_library(context_->gl_mode());
++#if defined(EKA2L1_PORTMASTER)
++        const GLubyte *pm_vendor = glGetString(GL_VENDOR);
++        const GLubyte *pm_renderer = glGetString(GL_RENDERER);
++        const GLubyte *pm_version = glGetString(GL_VERSION);
++        const GLubyte *pm_glsl = glGetString(GL_SHADING_LANGUAGE_VERSION);
++        LOG_INFO(DRIVER_GRAPHICS, "PortMaster GL_VENDOR: {}", pm_vendor ? reinterpret_cast<const char *>(pm_vendor) : "<null>");
++        LOG_INFO(DRIVER_GRAPHICS, "PortMaster GL_RENDERER: {}", pm_renderer ? reinterpret_cast<const char *>(pm_renderer) : "<null>");
++        LOG_INFO(DRIVER_GRAPHICS, "PortMaster GL_VERSION: {}", pm_version ? reinterpret_cast<const char *>(pm_version) : "<null>");
++        LOG_INFO(DRIVER_GRAPHICS, "PortMaster GLSL: {}", pm_glsl ? reinterpret_cast<const char *>(pm_glsl) : "<null>");
++#endif
+         list_queue.max_pending_count_ = 128;
+ 
+         context_->set_swap_interval(1);
+diff -ruN '--exclude=__pycache__' a/src/emu/drivers/src/graphics/context.cpp b/src/emu/drivers/src/graphics/context.cpp
+--- a/src/emu/drivers/src/graphics/context.cpp	2026-10-05 22:35:46.000000000 +0000
++++ b/src/emu/drivers/src/graphics/context.cpp	2026-10-08 03:10:56.485108845 +0000
+@@ -29,9 +29,13 @@
+ #elif EKA2L1_PLATFORM(ANDROID)
+ #include "backend/context_egl_android.h"
+ #elif EKA2L1_PLATFORM(UNIX)
++#if defined(EKA2L1_PORTMASTER)
++#include "backend/context_sdl2.h"
++#else
+ #include "backend/context_wayland.h"
+ #include "backend/context_glx.h"
+ #endif
++#endif
+ 
+ namespace eka2l1::drivers::graphics {
+     const std::array<std::pair<int, int>, 11> gl_context::s_desktop_opengl_versions = {
+@@ -47,11 +51,15 @@
+ #elif EKA2L1_PLATFORM(ANDROID)
+         return std::make_unique<gl_context_egl_android>(system_info, stereo, core);
+ #elif EKA2L1_PLATFORM(UNIX)
++#if defined(EKA2L1_PORTMASTER)
++        return std::make_unique<gl_context_sdl2>(system_info, stereo, core);
++#else
+         if (system_info.type == window_system_type::wayland) {
+             return std::make_unique<gl_context_egl_wayland>(system_info, stereo, core);
+         } else {
+             return std::make_unique<gl_context_glx>(system_info, stereo, core);
+         }
++#endif
+ #else
+         return nullptr;
+ #endif
+diff -ruN '--exclude=__pycache__' a/src/emu/drivers/src/input/backend/emu_controller_sdl2.cpp b/src/emu/drivers/src/input/backend/emu_controller_sdl2.cpp
+--- a/src/emu/drivers/src/input/backend/emu_controller_sdl2.cpp	2026-10-05 22:35:46.000000000 +0000
++++ b/src/emu/drivers/src/input/backend/emu_controller_sdl2.cpp	2026-10-08 03:24:33.941644097 +0000
+@@ -18,6 +18,9 @@
+ #include <algorithm>
+ #include <chrono>
+ #include <cmath>
++#include <cstdlib>
++#include <cstring>
++#include <set>
+ 
+ #include <drivers/input/backend/emu_controller_sdl2.h>
+ #include <drivers/input/common.h>
+@@ -28,7 +31,10 @@
+ #include <SDL.h>
+ 
+ namespace eka2l1::drivers {
+-    static controller_button_code SDL_TO_FRONTEND_BUTTON_MAP[] = { 
++    // SDL_GameControllerButton order is fixed by SDL's ABI.  Keep this map in
++    // that exact order; triggers are axes, not buttons.  Upstream historically
++    // treated LEFTSTICK/RIGHTSTICK as shoulders, which breaks handheld layouts.
++    static controller_button_code SDL_TO_FRONTEND_BUTTON_MAP[] = {
+         CONTROLLER_BUTTON_CODE_A,
+         CONTROLLER_BUTTON_CODE_B,
+         CONTROLLER_BUTTON_CODE_X,
+@@ -36,10 +42,10 @@
+         CONTROLLER_BUTTON_CODE_BACK,
+         CONTROLLER_BUTTON_CODE_GUIDE,
+         CONTROLLER_BUTTON_CODE_START,
++        CONTROLLER_BUTTON_CODE_LEFT_STICK,
++        CONTROLLER_BUTTON_CODE_RIGHT_STICK,
+         CONTROLLER_BUTTON_CODE_LB,
+         CONTROLLER_BUTTON_CODE_RB,
+-        CONTROLLER_BUTTON_CODE_LT,
+-        CONTROLLER_BUTTON_CODE_RT,
+         CONTROLLER_BUTTON_CODE_DPAD_UP,
+         CONTROLLER_BUTTON_CODE_DPAD_DOWN,
+         CONTROLLER_BUTTON_CODE_DPAD_LEFT,
+@@ -53,110 +59,217 @@
+     };
+ 
+     emu_controller_sdl2::emu_controller_sdl2()
+-        : ANALOG_MIN_DIFFERENCE(0.05f)
+-        , ANALOG_ACKNOWLEDGE_THRESHOLD(0.5f) {
++        : ANALOG_MIN_DIFFERENCE(0.02f)
++        , ANALOG_ACKNOWLEDGE_THRESHOLD(0.50f)
++        , ANALOG_RELEASE_THRESHOLD(0.38f)
++        , ANALOG_DEADZONE(0.20f)
++        , TRIGGER_RELEASE_THRESHOLD(0.35f) {
+         initialize_sdl2_if_not_yet();
+     }
+ 
++    static float normalize_gamepad_axis(const Sint16 raw, const float deadzone) {
++        // SDL_GameController normalizes vendor-specific physical axes (including
++        // RX/RY vs Z/RZ right-stick layouts) through its mapping database.  Keep
++        // the DualStick idea of a real dead-zone, then rescale the remaining
++        // travel so the useful range still reaches +/-1.0.
++        float value = (raw >= 0) ? (raw / 32767.0f) : (raw / 32768.0f);
++        const float magnitude = std::fabs(value);
++        if (magnitude <= deadzone) {
++            return 0.0f;
++        }
++        const float normalized = (magnitude - deadzone) / (1.0f - deadzone);
++        return std::copysign(std::min(normalized, 1.0f), value);
++    }
++
++    static bool input_debug_enabled() {
++        static const bool enabled = []() {
++            const char *value = std::getenv("EKA2L1_INPUT_DEBUG");
++            return value && *value && std::strcmp(value, "0") != 0;
++        }();
++        return enabled;
++    }
++
+     emu_controller_sdl2::~emu_controller_sdl2() {
++        stop_polling();
+         for (auto &gamepad: gamepads) {
+             if (gamepad.second.controller) {
+                 SDL_GameControllerClose(gamepad.second.controller);
+             }
+         }
++        gamepads.clear();
+     }
+ 
+     void emu_controller_sdl2::poll() {
+-        // Based on emu_controller_glfw3 algorithm written by sine
++        // SDL device indexes are transient: when one joystick disappears the
++        // remaining indexes can be renumbered.  Keep controllers by stable
++        // SDL_JoystickID instead.  This matters for built-in handheld pads as
++        // well as hot-plugged USB/Bluetooth controllers.
+         SDL_GameControllerUpdate();
++        std::set<SDL_JoystickID> seen;
+ 
+-        for (int jid = 0; jid < SDL_NumJoysticks(); jid++) {
+-            if (SDL_IsGameController(jid)) {
+-                SDL_JoystickGUID guid = SDL_JoystickGetDeviceGUID(jid);
+-                const bool pad_not_exist = (gamepads.count(jid) == 0);
+-
+-                if (pad_not_exist || (memcmp(gamepads[jid].guid.data, guid.data, sizeof(SDL_JoystickGUID)) != 0)) {
+-                    if (pad_not_exist) {
+-                        SDL_GameControllerClose(gamepads[jid].controller);
+-                    }
+-                    gamepads[jid].controller = SDL_GameControllerOpen(jid);
+-                    gamepads[jid].button = std::vector<bool>(SDL_CONTROLLER_BUTTON_MAX, false);
+-                    gamepads[jid].axis = std::vector<float>(SDL_CONTROLLER_AXIS_MAX, 0.0f);
+-                    gamepads[jid].guid = guid;
++        const int joystick_count = SDL_NumJoysticks();
++        for (int device_index = 0; device_index < joystick_count; ++device_index) {
++            if (!SDL_IsGameController(device_index)) {
++                continue;
++            }
++
++            const SDL_JoystickID instance_id = SDL_JoystickGetDeviceInstanceID(device_index);
++            if (instance_id < 0) {
++                continue;
++            }
++            seen.insert(instance_id);
++
++            auto it = gamepads.find(instance_id);
++            if (it == gamepads.end()) {
++                gamepad_state state{};
++                state.controller = SDL_GameControllerOpen(device_index);
++                if (!state.controller) {
++                    LOG_WARN(DRIVER_INPUT, "SDL could not open controller {}: {}", device_index, SDL_GetError());
++                    continue;
+                 }
+ 
+-                SDL_GameController *controller = gamepads[jid].controller;
++                state.button.assign(SDL_CONTROLLER_BUTTON_MAX, false);
++                state.axis.assign(SDL_CONTROLLER_AXIS_MAX, 0.0f);
++                state.axis_positive.assign(SDL_CONTROLLER_AXIS_MAX, false);
++                state.axis_negative.assign(SDL_CONTROLLER_AXIS_MAX, false);
++                state.guid = SDL_JoystickGetDeviceGUID(device_index);
++
++                char guid_text[33]{};
++                SDL_JoystickGetGUIDString(state.guid, guid_text, sizeof(guid_text));
++                const char *name = SDL_GameControllerName(state.controller);
++                LOG_INFO(DRIVER_INPUT, "SDL controller connected: id={} name='{}' guid={}",
++                         static_cast<int>(instance_id), name ? name : "unknown", guid_text);
++
++                if (input_debug_enabled()) {
++                    char *mapping = SDL_GameControllerMapping(state.controller);
++                    LOG_INFO(DRIVER_INPUT, "Controller mapping: {}", mapping ? mapping : "<none>");
++                    if (mapping) SDL_free(mapping);
++                }
+ 
+-                gamepad_state &current_pad = gamepads[jid];
+-                for (int i = 0; i < SDL_CONTROLLER_BUTTON_MAX; i++) {
+-                    const std::uint8_t state = SDL_GameControllerGetButton(controller, static_cast<SDL_GameControllerButton>(static_cast<int>(SDL_CONTROLLER_BUTTON_A) + i));
++                it = gamepads.emplace(instance_id, std::move(state)).first;
++            }
+ 
+-                    if ((state != 0) != current_pad.button[i]) {
+-                        current_pad.button[i] = (state != 0) ? true : false;
+-                        on_button_event(jid, SDL_TO_FRONTEND_BUTTON_MAP[i], state);
++            SDL_GameController *controller = it->second.controller;
++            gamepad_state &current_pad = it->second;
++            const int jid = static_cast<int>(instance_id);
++
++            for (int i = 0; i < SDL_CONTROLLER_BUTTON_MAX; ++i) {
++                const auto button = static_cast<SDL_GameControllerButton>(i);
++                const bool pressed = SDL_GameControllerGetButton(controller, button) != 0;
++                if (pressed != current_pad.button[i]) {
++                    current_pad.button[i] = pressed;
++                    if (on_button_event && i < static_cast<int>(sizeof(SDL_TO_FRONTEND_BUTTON_MAP) / sizeof(SDL_TO_FRONTEND_BUTTON_MAP[0]))) {
++                        on_button_event(jid, SDL_TO_FRONTEND_BUTTON_MAP[i], pressed);
+                     }
+                 }
++            }
+ 
+-                if (on_joy_move) {
+-                    float axisx = SDL_GameControllerGetAxis(controller, ::SDL_CONTROLLER_AXIS_LEFTX) / 32767.0f;
+-                    float axisy = SDL_GameControllerGetAxis(controller, ::SDL_CONTROLLER_AXIS_LEFTY) / 32767.0f;
+-
+-                    on_joy_move(jid, CONTROLLER_BUTTON_CODE_LEFT_STICK, axisx, axisy);
+-
+-                    axisx = SDL_GameControllerGetAxis(controller, ::SDL_CONTROLLER_AXIS_RIGHTX) / 32767.0f;
+-                    axisy = SDL_GameControllerGetAxis(controller, ::SDL_CONTROLLER_AXIS_RIGHTY) / 32767.0f;
+-
+-                    on_joy_move(jid, CONTROLLER_BUTTON_CODE_RIGHT_STICK, axisx, axisy);
+-                }
+-
+-                for (int i = 0; i < SDL_CONTROLLER_AXIS_MAX; i++) {
+-                    float axis = SDL_GameControllerGetAxis(controller, static_cast<SDL_GameControllerAxis>(static_cast<int>(SDL_CONTROLLER_AXIS_LEFTX) + i)) / 32767.0f;
+-
+-                    if (std::fabs(axis - current_pad.axis[i]) > ANALOG_MIN_DIFFERENCE) {
+-                        if (i < SDL_CONTROLLER_AXIS_TRIGGERLEFT) {
+-                            if (current_pad.axis[i] < ANALOG_ACKNOWLEDGE_THRESHOLD && axis >= ANALOG_ACKNOWLEDGE_THRESHOLD) {
+-                                on_button_event(jid, CONTROLLER_BUTTON_CODE_JOYSTICK_BASE + i * 2, true);
+-                            } else if (current_pad.axis[i] >= ANALOG_ACKNOWLEDGE_THRESHOLD && axis < ANALOG_ACKNOWLEDGE_THRESHOLD) {
+-                                on_button_event(jid, CONTROLLER_BUTTON_CODE_JOYSTICK_BASE + i * 2, false);
+-                            } else if (current_pad.axis[i] > -ANALOG_ACKNOWLEDGE_THRESHOLD && axis <= -ANALOG_ACKNOWLEDGE_THRESHOLD) {
+-                                on_button_event(jid, CONTROLLER_BUTTON_CODE_JOYSTICK_BASE + i * 2 + 1, true);
+-                            } else if (current_pad.axis[i] <= -ANALOG_ACKNOWLEDGE_THRESHOLD && axis > -ANALOG_ACKNOWLEDGE_THRESHOLD) {
+-                                on_button_event(jid, CONTROLLER_BUTTON_CODE_JOYSTICK_BASE + i * 2 + 1, false);
+-                            }
+-                        } else {
+-                            on_button_event(jid, CONTROLLER_BUTTON_CODE_LEFT_TRIGGER + (i - SDL_CONTROLLER_AXIS_TRIGGERLEFT), (axis > current_pad.axis[i]));
+-                        }
+-                        current_pad.axis[i] = axis;
+-                    }
++            const float left_x = normalize_gamepad_axis(
++                SDL_GameControllerGetAxis(controller, SDL_CONTROLLER_AXIS_LEFTX), ANALOG_DEADZONE);
++            const float left_y = normalize_gamepad_axis(
++                SDL_GameControllerGetAxis(controller, SDL_CONTROLLER_AXIS_LEFTY), ANALOG_DEADZONE);
++            const float right_x = normalize_gamepad_axis(
++                SDL_GameControllerGetAxis(controller, SDL_CONTROLLER_AXIS_RIGHTX), ANALOG_DEADZONE);
++            const float right_y = normalize_gamepad_axis(
++                SDL_GameControllerGetAxis(controller, SDL_CONTROLLER_AXIS_RIGHTY), ANALOG_DEADZONE);
++
++            if (on_joy_move) {
++                on_joy_move(jid, CONTROLLER_BUTTON_CODE_LEFT_STICK, left_x, left_y);
++                on_joy_move(jid, CONTROLLER_BUTTON_CODE_RIGHT_STICK, right_x, right_y);
++            }
++
++            // DualStick-derived behaviour: expose each analogue direction as a
++            // stable virtual button, but add hysteresis so a stick hovering near
++            // the threshold cannot spam key up/down events.  SDL_GameController
++            // already canonicalises RX/RY vs Z/RZ layouts through its mapping DB.
++            const float stick_axes[4] = {left_x, left_y, right_x, right_y};
++            for (int i = 0; i < 4; ++i) {
++                const float axis = stick_axes[i];
++                const bool old_positive = current_pad.axis_positive[i];
++                const bool old_negative = current_pad.axis_negative[i];
++                const bool new_positive = old_positive
++                    ? axis >= ANALOG_RELEASE_THRESHOLD
++                    : axis >= ANALOG_ACKNOWLEDGE_THRESHOLD;
++                const bool new_negative = old_negative
++                    ? axis <= -ANALOG_RELEASE_THRESHOLD
++                    : axis <= -ANALOG_ACKNOWLEDGE_THRESHOLD;
++
++                if (old_positive != new_positive && on_button_event) {
++                    on_button_event(jid, CONTROLLER_BUTTON_CODE_JOYSTICK_BASE + i * 2, new_positive);
+                 }
+-            } else if (gamepads.count(jid) > 0) {
+-                // Disconnect
+-                if (gamepads[jid].controller) {
+-                    SDL_GameControllerClose(gamepads[jid].controller);
++                if (old_negative != new_negative && on_button_event) {
++                    on_button_event(jid, CONTROLLER_BUTTON_CODE_JOYSTICK_BASE + i * 2 + 1, new_negative);
+                 }
+-    
+-                gamepads.erase(jid);
++                current_pad.axis_positive[i] = new_positive;
++                current_pad.axis_negative[i] = new_negative;
++                current_pad.axis[i] = axis;
++            }
++
++            // SDL trigger mappings vary between 0..32767 and signed physical
++            // axes.  Treat all negative values as released and use hysteresis.
++            for (int i = SDL_CONTROLLER_AXIS_TRIGGERLEFT; i <= SDL_CONTROLLER_AXIS_TRIGGERRIGHT; ++i) {
++                const auto sdl_axis = static_cast<SDL_GameControllerAxis>(i);
++                const Sint16 raw = SDL_GameControllerGetAxis(controller, sdl_axis);
++                const float axis = std::max(0.0f, raw / 32767.0f);
++                const bool was_pressed = current_pad.axis_positive[i];
++                const bool is_pressed = was_pressed
++                    ? axis >= TRIGGER_RELEASE_THRESHOLD
++                    : axis >= ANALOG_ACKNOWLEDGE_THRESHOLD;
++                if (was_pressed != is_pressed && on_button_event) {
++                    on_button_event(jid,
++                        CONTROLLER_BUTTON_CODE_LEFT_TRIGGER + (i - SDL_CONTROLLER_AXIS_TRIGGERLEFT),
++                        is_pressed);
++                }
++                current_pad.axis_positive[i] = is_pressed;
++                current_pad.axis[i] = axis;
++            }
++        }
++
++        for (auto it = gamepads.begin(); it != gamepads.end();) {
++            if (seen.count(it->first) != 0) {
++                ++it;
++                continue;
+             }
++            LOG_INFO(DRIVER_INPUT, "SDL controller disconnected: id={}", static_cast<int>(it->first));
++            if (it->second.controller) {
++                SDL_GameControllerClose(it->second.controller);
++            }
++            it = gamepads.erase(it);
+         }
+     }
+ 
+     void emu_controller_sdl2::run() {
+-        static constexpr const char *MAPPING_PATH = "resources//gamecontrollerdb.txt";
+-        SDL_GameControllerAddMappingsFromFile(MAPPING_PATH);
++        // Load the large upstream DB first, then the measured H700 mapping so
++        // our built-in ANBERNIC-keys entry wins if the generic DB ever grows an
++        // older/conflicting entry for the same GUID.
++        const int generic_mappings = SDL_GameControllerAddMappingsFromFile("resources/gamecontrollerdb.txt");
++        if (generic_mappings >= 0) {
++            LOG_INFO(DRIVER_INPUT, "Loaded {} generic SDL controller mapping(s)", generic_mappings);
++        }
++        const int h700_mappings = SDL_GameControllerAddMappingsFromFile("resources/gamecontrollerdb-h700.txt");
++        if (h700_mappings >= 0) {
++            LOG_INFO(DRIVER_INPUT, "Loaded {} H700 controller mapping(s)", h700_mappings);
++        }
+ 
+-        while (!shall_stop) {
++        while (!shall_stop.load()) {
+             poll();
+-            std::this_thread::sleep_for(std::chrono::milliseconds(1));
++            std::this_thread::sleep_for(std::chrono::milliseconds(2));
+         }
+     }
+ 
+     void emu_controller_sdl2::start_polling() {
++        if (polling_thread && polling_thread->joinable()) {
++            return;
++        }
+         shall_stop = false;
+         polling_thread = std::make_unique<std::thread>(&emu_controller_sdl2::run, this);
+     }
+ 
+     void emu_controller_sdl2::stop_polling() {
+         shall_stop = true;
+-        polling_thread->join();
++        if (polling_thread && polling_thread->joinable()) {
++            polling_thread->join();
++        }
++        polling_thread.reset();
+     }
+ }
+diff -ruN '--exclude=__pycache__' a/src/emu/drivers/src/network/tls_trust_posix.cpp b/src/emu/drivers/src/network/tls_trust_posix.cpp
+--- a/src/emu/drivers/src/network/tls_trust_posix.cpp	1970-01-01 00:00:00.000000000 +0000
++++ b/src/emu/drivers/src/network/tls_trust_posix.cpp	2026-10-08 03:12:17.896485080 +0000
+@@ -0,0 +1,59 @@
++// Copyright (c) 2026 EKA2L1 PortMaster contributors.
++// SPDX-License-Identifier: GPL-3.0-or-later
++#include "tls_trust.h"
++
++#include <mbedtls/x509_crt.h>
++#include <cstdlib>
++
++namespace eka2l1::drivers {
++    static bool load_system_ca(mbedtls_x509_crt &ca) {
++        const char *override_path = std::getenv("SSL_CERT_FILE");
++        if (override_path && *override_path && mbedtls_x509_crt_parse_file(&ca, override_path) == 0) {
++            return true;
++        }
++
++        static const char *paths[] = {
++            "/etc/ssl/certs/ca-certificates.crt",
++            "/etc/pki/tls/certs/ca-bundle.crt",
++            "/etc/ssl/ca-bundle.pem",
++            "/etc/ssl/cert.pem"
++        };
++
++        for (const char *path : paths) {
++            if (mbedtls_x509_crt_parse_file(&ca, path) == 0) {
++                return true;
++            }
++        }
++        return false;
++    }
++
++    bool verify_system_certificate(const tls_certificate_chain &chain, const std::string &hostname) {
++        if (chain.empty() || hostname.empty()) {
++            return false;
++        }
++
++        mbedtls_x509_crt peer;
++        mbedtls_x509_crt ca;
++        mbedtls_x509_crt_init(&peer);
++        mbedtls_x509_crt_init(&ca);
