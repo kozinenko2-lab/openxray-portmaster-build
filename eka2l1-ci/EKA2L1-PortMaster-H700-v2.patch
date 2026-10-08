@@ -1667,9 +1667,9 @@ diff -ruN '--exclude=__pycache__' a/src/emu/portmaster/src/screen_presenter.cpp 
 +        rect src;
 +        src.size = source_size;
 +        rect dest;
-+        dest.top = {static_cast<int>((swapchain_size.x - width) / 2.0f),
-+                    static_cast<int>((swapchain_size.y - height) / 2.0f)};
-+        dest.size = {static_cast<int>(width), static_cast<int>(height)};
++        dest.top = vec2(static_cast<int>((swapchain_size.x - width) / 2.0f),
++                        static_cast<int>((swapchain_size.y - height) / 2.0f));
++        dest.size = vec2(static_cast<int>(width), static_cast<int>(height));
 +
 +        const float scale_x = width / static_cast<float>(source_size.x);
 +        const float scale_y = height / static_cast<float>(source_size.y);
