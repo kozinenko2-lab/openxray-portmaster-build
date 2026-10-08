@@ -3,9 +3,13 @@ set -euxo pipefail
 
 export DEBIAN_FRONTEND=noninteractive
 
-# Ubuntu 18.04 is EOL, but it is useful here because its glibc 2.27 matches
-# the conservative H700/MuOS target ABI.
-sed -i   -e 's|http://ports.ubuntu.com/ubuntu-ports|http://old-releases.ubuntu.com/ubuntu|g'   -e 's|http://archive.ubuntu.com/ubuntu|http://old-releases.ubuntu.com/ubuntu|g'   -e 's|http://security.ubuntu.com/ubuntu|http://old-releases.ubuntu.com/ubuntu|g'   /etc/apt/sources.list
+# ARM64 Ubuntu 18.04 packages are still published on the Ubuntu ports mirror.
+cat >/etc/apt/sources.list <<'EOF'
+deb http://ports.ubuntu.com/ubuntu-ports bionic main restricted universe multiverse
+deb http://ports.ubuntu.com/ubuntu-ports bionic-updates main restricted universe multiverse
+deb http://ports.ubuntu.com/ubuntu-ports bionic-security main restricted universe multiverse
+deb http://ports.ubuntu.com/ubuntu-ports bionic-backports main restricted universe multiverse
+EOF
 
 apt-get update
 apt-get install -y --no-install-recommends   ca-certificates curl git make ninja-build pkg-config   gcc-8 g++-8 binutils   autoconf automake libtool   libopenal-dev libjpeg-dev libogg-dev libvorbis-dev   libegl1-mesa-dev libgles2-mesa-dev libgl1-mesa-dev   libdrm-dev libgbm-dev libudev-dev   libasound2-dev libpulse-dev libdbus-1-dev   libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxinerama-dev   libwayland-dev libwayland-egl1-mesa   zlib1g-dev
