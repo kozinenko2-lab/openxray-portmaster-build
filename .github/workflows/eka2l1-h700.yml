@@ -1,0 +1,81 @@
+name: EKA2L1 H700 PortMaster CI
+
+on:
+  push:
+    branches:
+      - eka2l1-h700-ci
+  workflow_dispatch:
+
+jobs:
+  build-h700:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - name: Checkout CI harness
+        uses: actions/checkout@v4
+        with:
+          ref: eka2l1-h700-ci
+
+      - name: Clone pinned EKA2L1 with submodules
+        shell: bash
+        run: |
+          set -euxo pipefail
+          rm -rf eka2l1
+          git clone https://github.com/EKA2L1/EKA2L1.git eka2l1
+          cd eka2l1
+          git checkout 11f5b6cd141c0884a130ee45743f1f5e17bb1783
+          git submodule update --init --recursive
+          patch -p1 < ../eka2l1-ci/EKA2L1-PortMaster-H700-v2.patch
+          git status --short
+
+      - name: Build in H700 toolchain
+        shell: bash
+        run: |
+          set -euxo pipefail
+          docker pull ghcr.io/loveretro/h700-toolchain:latest
+          docker run --rm \
+            -v "$PWD:/root/workspace" \
+            -w /root/workspace/eka2l1 \
+            ghcr.io/loveretro/h700-toolchain:latest \
+            bash -lc '
+              set -euxo pipefail
+              echo "CC=$CC"
+              echo "CXX=$CXX"
+              echo "SYSROOT=$SYSROOT"
+              echo "CMAKE_TOOLCHAIN_FILE=$CMAKE_TOOLCHAIN_FILE"
+              "$CC" --version
+              cmake -S . -B build-h700 -G Ninja \
+                -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+                -DCMAKE_TOOLCHAIN_FILE="$CMAKE_TOOLCHAIN_FILE" \
+                -DCMAKE_PREFIX_PATH="$PREFIX_LOCAL" \
+                -DCMAKE_C_FLAGS="-mcpu=cortex-a53 -mtune=cortex-a53" \
+                -DCMAKE_CXX_FLAGS="-mcpu=cortex-a53 -mtune=cortex-a53" \
+                -DEKA2L1_PORTMASTER=ON \
+                -DEKA2L1_BUILD_TESTS=OFF \
+                -DEKA2L1_BUILD_TOOLS=OFF \
+                -DEKA2L1_BUILD_PATCH=OFF \
+                -DEKA2L1_ENABLE_DISCORD_RICH_PRESENCE=OFF \
+                2>&1 | tee build-h700/configure.log
+              cmake --build build-h700 --target eka2l1_portmaster -j2 \
+                2>&1 | tee build-h700/build.log
+              file build-h700/src/emu/portmaster/eka2l1_portmaster || true
+              readelf -h build-h700/src/emu/portmaster/eka2l1_portmaster || true
+              readelf -d build-h700/src/emu/portmaster/eka2l1_portmaster || true
+            '
+
+      - name: Stage diagnostics
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p ci-artifacts
+          cp -f eka2l1/build-h700/configure.log ci-artifacts/ 2>/dev/null || true
+          cp -f eka2l1/build-h700/build.log ci-artifacts/ 2>/dev/null || true
+          cp -f eka2l1/build-h700/src/emu/portmaster/eka2l1_portmaster ci-artifacts/ 2>/dev/null || true
+
+      - name: Upload diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eka2l1-h700-ci
+          path: ci-artifacts/
+          if-no-files-found: warn
