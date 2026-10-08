@@ -1575,7 +1575,7 @@ diff -ruN '--exclude=__pycache__' a/src/emu/portmaster/src/main.cpp b/src/emu/po
 +
 +    eka2l1::portmaster::emulator_state state;
 +    if (!state.stage_one() || !state.stage_two()) {
-+        LOG_ERROR(FRONTEND_CMDLINE, "PortMaster frontend initialization failed");
++        std::cerr << "PortMaster frontend initialization failed\n";
 +        return 3;
 +    }
 +
