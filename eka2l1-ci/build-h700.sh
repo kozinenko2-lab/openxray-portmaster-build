@@ -125,7 +125,19 @@ EOF
 rm -rf build-h700
 mkdir -p build-h700
 
-cmake -S . -B build-h700 -G Ninja   -DCMAKE_BUILD_TYPE=RelWithDebInfo   -DCMAKE_TOOLCHAIN_FILE=/tmp/eka2l1-gcc11-h700.cmake   -DCMAKE_PREFIX_PATH="$PREFIX_LOCAL"   -DCMAKE_C_FLAGS="-mcpu=cortex-a53 -mtune=cortex-a53"   -DCMAKE_CXX_FLAGS="-mcpu=cortex-a53 -mtune=cortex-a53"   -DEKA2L1_PORTMASTER=ON   -DEKA2L1_BUILD_TESTS=OFF   -DEKA2L1_BUILD_TOOLS=OFF   -DEKA2L1_BUILD_PATCH=OFF   -DEKA2L1_ENABLE_DISCORD_RICH_PRESENCE=OFF   2>&1 | tee build-h700/configure.log
+cmake -S . -B build-h700 -G Ninja \
+  -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+  -DCMAKE_TOOLCHAIN_FILE=/tmp/eka2l1-gcc11-h700.cmake \
+  -DCMAKE_PREFIX_PATH="$PREFIX_LOCAL" \
+  -DCMAKE_C_FLAGS="-mcpu=cortex-a53 -mtune=cortex-a53 $FFMPEG_ZLIB_CFLAGS" \
+  -DCMAKE_CXX_FLAGS="-mcpu=cortex-a53 -mtune=cortex-a53" \
+  -DCMAKE_EXE_LINKER_FLAGS="$FFMPEG_ZLIB_LDFLAGS" \
+  -DEKA2L1_PORTMASTER=ON \
+  -DEKA2L1_BUILD_TESTS=OFF \
+  -DEKA2L1_BUILD_TOOLS=OFF \
+  -DEKA2L1_BUILD_PATCH=OFF \
+  -DEKA2L1_ENABLE_DISCORD_RICH_PRESENCE=OFF \
+  2>&1 | tee build-h700/configure.log
 
 cmake --build build-h700 --target eka2l1_portmaster -j2   2>&1 | tee build-h700/build.log
 
