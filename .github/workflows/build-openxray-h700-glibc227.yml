@@ -48,7 +48,6 @@ jobs:
           git -C openxray apply ../build-repo/h700/portmaster-bundled-codecs.patch
           git -C openxray apply ../build-repo/h700/theora-bionic-ogg.patch
           git -C openxray apply ../build-repo/h700/sdl2-bionic-api.patch
-          git -C openxray apply ../build-repo/h700/gcc8-sdl-ime.patch
           git -C openxray diff --check
 
       - name: Build inside glibc 2.27 ARM64 container
