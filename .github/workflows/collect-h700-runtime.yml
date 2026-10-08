@@ -29,9 +29,11 @@ jobs:
           deb http://ports.ubuntu.com/ubuntu-ports bionic-security main universe
           EOF
               apt-get update
-              apt-get install -y --no-install-recommends                 binutils file                 libopenal1 libjpeg8 libogg0 libvorbis0a libvorbisfile3 libsndio6.1
+              apt-get install -y --no-install-recommends                 binutils file                 libopenal1 libjpeg8 libogg0 libvorbis0a libvorbisfile3 libsndio6.1 libasound2 libbsd0
               for lib in                 libopenal.so.1                 libjpeg.so.8                 libogg.so.0                 libvorbis.so.0                 libvorbisfile.so.3 \
-                libsndio.so.6.1
+                libsndio.so.6.1 \
+                libasound.so.2 \
+                libbsd.so.0
               do
                 p="$(find /usr/lib/aarch64-linux-gnu /lib/aarch64-linux-gnu -name "$lib" -print -quit)"
                 test -n "$p"
