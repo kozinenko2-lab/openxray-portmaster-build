@@ -497,8 +497,7 @@ diff -ruN '--exclude=__pycache__' a/src/emu/drivers/src/graphics/backend/context
 +
 +    bool gl_context_sdl2::clear_current() {
 +        return !window_ || SDL_GL_MakeCurrent(window_, nullptr) == 0;
-+    }
-+
++    }+
 +    void gl_context_sdl2::swap_buffers() {
 +        if (window_ && context_) {
 +            SDL_GL_SwapWindow(window_);
@@ -997,4 +996,878 @@ diff -ruN '--exclude=__pycache__' a/src/emu/drivers/src/network/tls_trust_posix.
 +        mbedtls_x509_crt peer;
 +        mbedtls_x509_crt ca;
 +        mbedtls_x509_crt_init(&peer);
-+        mbedtls_x509_crt_init(&ca);
++        mbedtls_x509_crt_init(&ca);+
++        bool parsed = true;
++        for (const auto &der : chain) {
++            if (der.empty() || mbedtls_x509_crt_parse_der(&peer, der.data(), der.size()) != 0) {
++                parsed = false;
++                break;
++            }
++        }
++
++        bool verified = false;
++        if (parsed && load_system_ca(ca)) {
++            std::uint32_t flags = 0;
++            verified = mbedtls_x509_crt_verify(&peer, &ca, nullptr, hostname.c_str(), &flags, nullptr, nullptr) == 0
++                && flags == 0;
++        }
++
++        mbedtls_x509_crt_free(&ca);
++        mbedtls_x509_crt_free(&peer);
++        return verified;
++    }
++}
+diff -ruN '--exclude=__pycache__' a/src/emu/portmaster/CMakeLists.txt b/src/emu/portmaster/CMakeLists.txt
+--- a/src/emu/portmaster/CMakeLists.txt	1970-01-01 00:00:00.000000000 +0000
++++ b/src/emu/portmaster/CMakeLists.txt	2026-10-08 03:23:49.457978827 +0000
+@@ -0,0 +1,87 @@
++cmake_minimum_required(VERSION 3.8)
++
++add_executable(eka2l1_portmaster
++    include/portmaster/emu_window_sdl2.h
++    include/portmaster/state.h
++    src/emu_window_sdl2.cpp
++    src/main.cpp
++    src/screen_presenter.cpp
++    src/state.cpp)
++
++target_include_directories(eka2l1_portmaster PRIVATE include)
++
++target_link_libraries(eka2l1_portmaster PRIVATE
++    common
++    cpu
++    drivers
++    SDL2
++    glad
++    lunasvg
++    epoc
++    epockern
++    epocpkg
++    epocservs
++    sqlite3
++    yaml-cpp)
++
++add_dependencies(eka2l1_portmaster
++    audiooutputrouting
++    avkonfep
++    ecam
++    scdv
++    mediaclientaudio
++    mediaclientaudiostream
++    mediaclientvideo
++    vibractrl
++    backlightctrl
++    postingsurfacefactory
++    goommonitor
++    ssl
++    commdb)
++
++set_property(TARGET eka2l1_portmaster APPEND PROPERTY LINK_DEPENDS
++    "${PROJECT_SOURCE_DIR}/src/patch/ssl/group/ssl_general.dll"
++    "${PROJECT_SOURCE_DIR}/src/patch/ssl/group/ssl.dll.map"
++    "${PROJECT_SOURCE_DIR}/src/patch/commdb/group/commdb_v6.dll"
++    "${PROJECT_SOURCE_DIR}/src/patch/commdb/group/commdb.dll.map")
++
++set_target_properties(eka2l1_portmaster PROPERTIES
++    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
++
++# The OpenGL ES backend intentionally looks up shaders at resources/*.vert|frag,
++# just like Android.  Keep a self-contained PortMaster runtime beside the binary.
++add_custom_command(TARGET eka2l1_portmaster POST_BUILD
++    COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:eka2l1_portmaster>/resources"
++    COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:eka2l1_portmaster>/resources/upscale"
++    COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:eka2l1_portmaster>/compat"
++    COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:eka2l1_portmaster>/patch"
++    COMMAND ${CMAKE_COMMAND} -E copy_directory
++            "${PROJECT_SOURCE_DIR}/src/emu/drivers/resources/gles"
++            "$<TARGET_FILE_DIR:eka2l1_portmaster>/resources"
++    COMMAND ${CMAKE_COMMAND} -E copy_directory
++            "${PROJECT_SOURCE_DIR}/src/emu/drivers/resources/upscale"
++            "$<TARGET_FILE_DIR:eka2l1_portmaster>/resources/upscale"
++    COMMAND ${CMAKE_COMMAND} -E copy_directory
++            "${PROJECT_SOURCE_DIR}/miscs/compat"
++            "$<TARGET_FILE_DIR:eka2l1_portmaster>/compat"
++    COMMAND ${CMAKE_COMMAND} -E copy_directory
++            "${CMAKE_BINARY_DIR}/bin/patch"
++            "$<TARGET_FILE_DIR:eka2l1_portmaster>/patch"
++    COMMAND ${CMAKE_COMMAND} -E copy_if_different
++            "${PROJECT_SOURCE_DIR}/src/emu/drivers/resources/defaultbank.hsb"
++            "$<TARGET_FILE_DIR:eka2l1_portmaster>/resources/defaultbank.hsb"
++    COMMAND ${CMAKE_COMMAND} -E copy_if_different
++            "${PROJECT_SOURCE_DIR}/src/emu/drivers/resources/defaultbank.sf2"
++            "$<TARGET_FILE_DIR:eka2l1_portmaster>/resources/defaultbank.sf2"
++    COMMAND ${CMAKE_COMMAND} -E copy_if_different
++            "${PROJECT_SOURCE_DIR}/src/emu/portmaster/resources/gamecontrollerdb-h700.txt"
++            "$<TARGET_FILE_DIR:eka2l1_portmaster>/resources/gamecontrollerdb-h700.txt")
++
++# The upstream SDL controller database is a git submodule and may be absent in a
++# source ZIP.  Copy it only when it has been initialized.
++if (EXISTS "${PROJECT_SOURCE_DIR}/src/external/SDL_GameControllerDB/gamecontrollerdb.txt")
++    add_custom_command(TARGET eka2l1_portmaster POST_BUILD
++        COMMAND ${CMAKE_COMMAND} -E copy_if_different
++                "${PROJECT_SOURCE_DIR}/src/external/SDL_GameControllerDB/gamecontrollerdb.txt"
++                "$<TARGET_FILE_DIR:eka2l1_portmaster>/resources/gamecontrollerdb.txt")
++endif()
+diff -ruN '--exclude=__pycache__' a/src/emu/portmaster/include/portmaster/emu_window_sdl2.h b/src/emu/portmaster/include/portmaster/emu_window_sdl2.h
+--- a/src/emu/portmaster/include/portmaster/emu_window_sdl2.h	1970-01-01 00:00:00.000000000 +0000
++++ b/src/emu/portmaster/include/portmaster/emu_window_sdl2.h	2026-10-08 03:12:17.897562390 +0000
+@@ -0,0 +1,45 @@
++// Copyright (c) 2026 EKA2L1 PortMaster contributors.
++// SPDX-License-Identifier: GPL-3.0-or-later
++#pragma once
++
++#include <drivers/graphics/emu_window.h>
++#include <SDL.h>
++#include <atomic>
++
++namespace eka2l1::drivers {
++    class emu_window_sdl2 final : public emu_window {
++    public:
++        emu_window_sdl2();
++        ~emu_window_sdl2() override;
++
++        void init(std::string title, vec2 size, std::uint32_t flags) override;
++        void poll_events() override;
++        void shutdown() override;
++        void set_fullscreen(bool fullscreen) override;
++        bool should_quit() override;
++        void change_title(std::string title) override;
++        vec2 window_size() override;
++        vec2 window_fb_size() override;
++        vec2d get_mouse_pos() override;
++        bool get_mouse_button_hold(int mouse_btt) override;
++        void set_userdata(void *userdata) override;
++        void *get_userdata() override;
++        bool set_cursor(cursor *cur) override;
++        void cursor_visiblity(bool visible) override;
++        bool cursor_visiblity() override;
++        window_system_info get_window_system_info() override;
++
++        SDL_Window *native_window() const { return window_; }
++        void request_quit();
++
++    private:
++        void refresh_size();
++
++        SDL_Window *window_ = nullptr;
++        vec2 window_size_{640, 480};
++        vec2 framebuffer_size_{640, 480};
++        void *userdata_ = nullptr;
++        std::atomic<bool> quit_{false};
++        bool cursor_visible_ = false;
++    };
++}
+diff -ruN '--exclude=__pycache__' a/src/emu/portmaster/include/portmaster/state.h b/src/emu/portmaster/include/portmaster/state.h
+--- a/src/emu/portmaster/include/portmaster/state.h	1970-01-01 00:00:00.000000000 +0000
++++ b/src/emu/portmaster/include/portmaster/state.h	2026-10-08 03:22:19.656295812 +0000
+@@ -0,0 +1,64 @@
++// Copyright (c) 2026 EKA2L1 PortMaster contributors.
++// SPDX-License-Identifier: GPL-3.0-or-later
++#pragma once
++
++#include <atomic>
++#include <condition_variable>
++#include <memory>
++#include <mutex>
++#include <thread>
++#include <vector>
++
++#include <common/sync.h>
++#include <config/app_settings.h>
++#include <config/config.h>
++#include <drivers/audio/audio.h>
++#include <drivers/graphics/graphics.h>
++#include <drivers/input/common.h>
++#include <drivers/input/emu_controller.h>
++#include <drivers/sensor/sensor.h>
++#include <portmaster/emu_window_sdl2.h>
++#include <system/epoc.h>
++
++namespace eka2l1 {
++    class window_server;
++    namespace epoc { struct screen; }
++}
++
++namespace eka2l1::portmaster {
++    struct emulator_state {
++        std::unique_ptr<system> symsys;
++        std::unique_ptr<drivers::graphics_driver> graphics_driver;
++        std::unique_ptr<drivers::audio_driver> audio_driver;
++        std::unique_ptr<drivers::sensor_driver> sensor_driver;
++        std::unique_ptr<config::app_settings> app_settings;
++        std::unique_ptr<drivers::emu_window_sdl2> window;
++        drivers::emu_controller_ptr controller;
++
++        config::state conf;
++        window_server *winserv = nullptr;
++        std::vector<std::size_t> screen_change_handles;
++        std::size_t system_reset_callback = 0;
++        int present_status = 0;
++
++        std::atomic<bool> should_quit{false};
++        std::atomic<bool> graphics_ready{false};
++        std::atomic<bool> graphics_failed{false};
++        std::mutex ready_mutex;
++        std::condition_variable ready_cv;
++        std::mutex input_mutex;
++
++        bool stage_one();
++        bool stage_two();
++        void on_system_reset(system *sys);
++        void register_draw_callbacks();
++        bool launch_uid(std::uint32_t uid);
++        void list_apps();
++    };
++
++    drivers::input_event make_controller_button_event(int jid, int button, bool pressed);
++    drivers::input_event make_controller_axis_event(int jid, int button, float x, float y);
++    void draw_screen(drivers::graphics_command_builder &builder, drivers::graphics_driver *driver,
++                     epoc::screen *screen, std::uint32_t width, std::uint32_t height,
++                     const config::state &conf);
++}
+diff -ruN '--exclude=__pycache__' a/src/emu/portmaster/resources/gamecontrollerdb-h700.txt b/src/emu/portmaster/resources/gamecontrollerdb-h700.txt
+--- a/src/emu/portmaster/resources/gamecontrollerdb-h700.txt	1970-01-01 00:00:00.000000000 +0000
++++ b/src/emu/portmaster/resources/gamecontrollerdb-h700.txt	2026-10-08 03:23:49.457928541 +0000
+@@ -0,0 +1,4 @@
++# Anbernic H700 built-in controller mapping (NextUI rc11+ measured layout).
++# Physical-label/Nintendo layout: A/B/X/Y match the labels printed on the shell.
++# Includes both analogue sticks, stick clicks and L2/R2.
++19000000010000000100000000016e01,ANBERNIC-keys,a:b1,b:b0,x:b3,y:b2,back:b6,start:b7,guide:b8,leftshoulder:b4,rightshoulder:b5,leftstick:b9,rightstick:b10,lefttrigger:a2,righttrigger:a5,leftx:a0,lefty:a1,rightx:a3,righty:a4,dpup:h0.1,dpdown:h0.4,dpleft:h0.8,dpright:h0.2,platform:Linux,
+diff -ruN '--exclude=__pycache__' a/src/emu/portmaster/src/emu_window_sdl2.cpp b/src/emu/portmaster/src/emu_window_sdl2.cpp
+--- a/src/emu/portmaster/src/emu_window_sdl2.cpp	1970-01-01 00:00:00.000000000 +0000
++++ b/src/emu/portmaster/src/emu_window_sdl2.cpp	2026-10-08 03:23:34.979418215 +0000
+@@ -0,0 +1,146 @@
++// Copyright (c) 2026 EKA2L1 PortMaster contributors.
++// SPDX-License-Identifier: GPL-3.0-or-later
++#include <portmaster/emu_window_sdl2.h>
++#include <common/log.h>
++
++namespace eka2l1::drivers {
++    emu_window_sdl2::emu_window_sdl2() = default;
++
++    emu_window_sdl2::~emu_window_sdl2() {
++        shutdown();
++    }
++
++    void emu_window_sdl2::init(std::string title, vec2 size, const std::uint32_t flags) {
++        if ((SDL_WasInit(SDL_INIT_VIDEO) & SDL_INIT_VIDEO) == 0 && SDL_InitSubSystem(SDL_INIT_VIDEO) != 0) {
++            LOG_CRITICAL(FRONTEND_CMDLINE, "SDL video init failed: {}", SDL_GetError());
++            quit_ = true;
++            return;
++        }
++
++        // Must be set before SDL_CreateWindow on the H700 Mali stack. Requesting
++        // desktop GL first can abort inside the fbdev EGL winsys.
++        SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
++        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
++        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
++        SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
++        SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 0);
++        SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 0);
++
++        if (size.x <= 0 || size.y <= 0) {
++            size = {640, 480};
++        }
++
++        Uint32 window_flags = SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN;
++        if (flags & emu_window_flag_fullscreen || flags & emu_window_flag_maximum_size) {
++            window_flags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
++        }
++
++        window_ = SDL_CreateWindow(title.c_str(), SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
++                                   size.x, size.y, window_flags);
++        if (!window_ && (window_flags & SDL_WINDOW_FULLSCREEN_DESKTOP)) {
++            // Some minimal fbdev SDL builds reject FULLSCREEN_DESKTOP but still
++            // provide the native Mali GLES path. Retry with a plain window.
++            SDL_ClearError();
++            window_flags &= ~SDL_WINDOW_FULLSCREEN_DESKTOP;
++            window_ = SDL_CreateWindow(title.c_str(), SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
++                                       size.x, size.y, window_flags);
++        }
++
++        if (!window_) {
++            LOG_CRITICAL(FRONTEND_CMDLINE, "SDL_CreateWindow failed: {}", SDL_GetError());
++            quit_ = true;
++            return;
++        }
++
++        SDL_ShowCursor(SDL_DISABLE);
++        cursor_visible_ = false;
++        refresh_size();
++
++        const char *video_driver = SDL_GetCurrentVideoDriver();
++        LOG_INFO(FRONTEND_CMDLINE, "SDL video driver: {}", video_driver ? video_driver : "<unknown>");
++        LOG_INFO(FRONTEND_CMDLINE, "SDL window: {}x{}, drawable: {}x{}",
++                 window_size_.x, window_size_.y, framebuffer_size_.x, framebuffer_size_.y);
++    }
++
++    void emu_window_sdl2::refresh_size() {
++        if (!window_) return;
++        int w = 0, h = 0, fw = 0, fh = 0;
++        SDL_GetWindowSize(window_, &w, &h);
++        SDL_GL_GetDrawableSize(window_, &fw, &fh);
++        window_size_ = {w, h};
++        framebuffer_size_ = {(fw > 0 ? fw : w), (fh > 0 ? fh : h)};
++    }
++
++    void emu_window_sdl2::poll_events() {
++        SDL_Event event;
++        while (SDL_PollEvent(&event)) {
++            switch (event.type) {
++            case SDL_QUIT:
++                request_quit();
++                break;
++            case SDL_WINDOWEVENT:
++                if (event.window.event == SDL_WINDOWEVENT_SIZE_CHANGED ||
++                    event.window.event == SDL_WINDOWEVENT_RESIZED) {
++                    refresh_size();
++                    if (resize_hook) resize_hook(userdata_, framebuffer_size_);
++                }
++                break;
++            case SDL_KEYDOWN:
++                if (event.key.keysym.sym == SDLK_ESCAPE) {
++                    request_quit();
++                }
++                break;
++            default:
++                break;
++            }
++        }
++    }
++
++    void emu_window_sdl2::request_quit() {
++        if (!quit_.exchange(true) && close_hook) {
++            close_hook(userdata_);
++        }
++    }
++
++    void emu_window_sdl2::shutdown() {
++        if (window_) {
++            SDL_DestroyWindow(window_);
++            window_ = nullptr;
++        }
++    }
++
++    void emu_window_sdl2::set_fullscreen(const bool fullscreen) {
++        if (window_) SDL_SetWindowFullscreen(window_, fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0);
++        refresh_size();
++    }
++
++    bool emu_window_sdl2::should_quit() { return quit_; }
++    void emu_window_sdl2::change_title(std::string title) { if (window_) SDL_SetWindowTitle(window_, title.c_str()); }
++    vec2 emu_window_sdl2::window_size() { return window_size_; }
++    vec2 emu_window_sdl2::window_fb_size() { return framebuffer_size_; }
++
++    vec2d emu_window_sdl2::get_mouse_pos() {
++        int x = 0, y = 0;
++        SDL_GetMouseState(&x, &y);
++        return {static_cast<double>(x), static_cast<double>(y)};
++    }
++
++    bool emu_window_sdl2::get_mouse_button_hold(const int mouse_btt) {
++        const Uint32 state = SDL_GetMouseState(nullptr, nullptr);
++        if (mouse_btt < 0 || mouse_btt > 4) return false;
++        return (state & SDL_BUTTON(static_cast<unsigned>(mouse_btt + 1))) != 0;
++    }
++
++    void emu_window_sdl2::set_userdata(void *userdata) { userdata_ = userdata; }
++    void *emu_window_sdl2::get_userdata() { return userdata_; }
++    bool emu_window_sdl2::set_cursor(cursor *) { return false; }
++    void emu_window_sdl2::cursor_visiblity(const bool visible) { cursor_visible_ = visible; SDL_ShowCursor(visible ? SDL_ENABLE : SDL_DISABLE); }
++    bool emu_window_sdl2::cursor_visiblity() { return cursor_visible_; }
++
++    window_system_info emu_window_sdl2::get_window_system_info() {
++        window_system_info info(window_system_type::fbDev, nullptr, window_, window_);
++        info.surface_width = static_cast<std::uint32_t>(framebuffer_size_.x);
++        info.surface_height = static_cast<std::uint32_t>(framebuffer_size_.y);
++        return info;
++    }
++}
+diff -ruN '--exclude=__pycache__' a/src/emu/portmaster/src/main.cpp b/src/emu/portmaster/src/main.cpp
+--- a/src/emu/portmaster/src/main.cpp	1970-01-01 00:00:00.000000000 +0000
++++ b/src/emu/portmaster/src/main.cpp	2026-10-08 03:22:19.656415541 +0000
+@@ -0,0 +1,227 @@
++// Copyright (c) 2026 EKA2L1 PortMaster contributors.
++// SPDX-License-Identifier: GPL-3.0-or-later
++
++#include <portmaster/state.h>
++
++#include <common/log.h>
++#include <drivers/graphics/graphics.h>
++#include <drivers/input/common.h>
++#include <drivers/input/emu_controller.h>
++#include <kernel/kernel.h>
++#include <services/window/window.h>
++
++#include <chrono>
++#include <cstdint>
++#include <cstdlib>
++#include <filesystem>
++#include <iostream>
++#include <optional>
++#include <string>
++#include <thread>
++
++namespace {
++    struct options {
++        std::optional<std::uint32_t> uid;
++        bool list_apps = false;
++        bool help = false;
++    };
++
++    std::optional<std::uint32_t> parse_uid(const std::string &value) {
++        try {
++            std::size_t used = 0;
++            const unsigned long result = std::stoul(value, &used, 0);
++            if (used != value.size() || result > 0xFFFFFFFFUL) {
++                return std::nullopt;
++            }
++            return static_cast<std::uint32_t>(result);
++        } catch (...) {
++            return std::nullopt;
++        }
++    }
++
++    bool parse_args(const int argc, char **argv, options &out) {
++        for (int i = 1; i < argc; ++i) {
++            const std::string arg = argv[i];
++            if (arg == "--help" || arg == "-h") {
++                out.help = true;
++            } else if (arg == "--list-apps") {
++                out.list_apps = true;
++            } else if (arg == "--uid" && i + 1 < argc) {
++                out.uid = parse_uid(argv[++i]);
++                if (!out.uid) {
++                    std::cerr << "Invalid UID: " << argv[i] << '\n';
++                    return false;
++                }
++            } else {
++                std::cerr << "Unknown argument: " << arg << '\n';
++                return false;
++            }
++        }
++        return true;
++    }
++
++    void print_help() {
++        std::cout
++            << "EKA2L1 PortMaster frontend\n"
++            << "Usage:\n"
++            << "  eka2l1_portmaster --uid 0x12345678\n"
++            << "  eka2l1_portmaster --list-apps\n"
++            << "\n"
++            << "Data/configuration are read from the current working directory.\n";
++    }
++
++    void wake_os_thread(eka2l1::portmaster::emulator_state &state) {
++        if (state.symsys && state.symsys->get_kernel_system()) {
++            state.symsys->get_kernel_system()->stop_cores_idling();
++        }
++    }
++
++    void graphics_thread_main(eka2l1::portmaster::emulator_state &state) {
++        using namespace eka2l1;
++
++        state.window = std::make_unique<drivers::emu_window_sdl2>();
++        state.window->set_userdata(&state);
++        state.window->close_hook = [](void *userdata) {
++            auto *s = static_cast<portmaster::emulator_state *>(userdata);
++            s->should_quit = true;
++        };
++        state.window->resize_hook = [](void *userdata, vec2 size) {
++            auto *s = static_cast<portmaster::emulator_state *>(userdata);
++            if (s->graphics_driver) {
++                s->graphics_driver->update_surface_size(size);
++            }
++        };
++        state.window->init("EKA2L1 PortMaster", {640, 480}, drivers::emu_window_flag_maximum_size);
++
++        if (!state.window->native_window()) {
++            state.graphics_failed = true;
++            state.graphics_ready = true;
++            state.ready_cv.notify_all();
++            return;
++        }
++
++        state.graphics_driver = drivers::create_graphics_driver(
++            drivers::graphic_api::opengl, state.window->get_window_system_info());
++        if (!state.graphics_driver) {
++            LOG_CRITICAL(FRONTEND_CMDLINE, "Failed to create native GLES graphics driver");
++            state.graphics_failed = true;
++            state.graphics_ready = true;
++            state.ready_cv.notify_all();+            return;
++        }
++
++        state.graphics_driver->update_surface_size(state.window->window_fb_size());
++        state.graphics_driver->set_display_hook([&state]() {
++            state.window->poll_events();
++        });
++        state.symsys->set_graphics_driver(state.graphics_driver.get());
++        state.register_draw_callbacks();
++
++        state.controller = drivers::new_emu_controller(drivers::controller_type::sdl2);
++        if (state.controller) {
++            state.controller->on_button_event = [&state](int jid, int button, bool pressed) {
++                // PortMaster's menu/guide button is a reliable emergency exit and is
++                // intentionally not forwarded to the emulated phone.
++                if (button == drivers::CONTROLLER_BUTTON_CODE_GUIDE && pressed) {
++                    state.should_quit = true;
++                    if (state.window) state.window->request_quit();
++                    return;
++                }
++
++                std::lock_guard<std::mutex> guard(state.input_mutex);
++                if (!state.winserv) return;
++                auto evt = portmaster::make_controller_button_event(jid, button, pressed);
++                state.winserv->queue_input_from_driver(evt);
++            };
++
++            // Continuous two-stick values are preserved for diagnostics/future
++            // analogue consumers.  The SDL controller backend also produces the
++            // eight digital stick-direction events used by today's Symbian keymap.
++            state.controller->on_joy_move = [](int, int, float, float) {};
++            state.controller->start_polling();
++        }
++
++        state.graphics_ready = true;
++        state.ready_cv.notify_all();
++        state.graphics_driver->run();
++
++        if (state.controller) {
++            state.controller->stop_polling();
++            state.controller.reset();
++        }
++    }
++
++    void os_thread_main(eka2l1::portmaster::emulator_state &state) {
++        while (!state.should_quit) {
++            state.symsys->loop();
++        }
++    }
++}
++
++int main(int argc, char **argv) {
++    options opt;
++    if (!parse_args(argc, argv, opt)) {
++        print_help();
++        return 2;
++    }
++    if (opt.help) {
++        print_help();
++        return 0;
++    }
++
++    // PortMaster launches from shell scripts and CFWs with different cwd rules.
++    // Anchor all relative EKA2L1 storage/resources beside the executable.
++    try {
++        const std::filesystem::path exe = std::filesystem::absolute(argv[0]);
++        if (exe.has_parent_path()) {
++            std::filesystem::current_path(exe.parent_path());
++        }
++    } catch (const std::exception &e) {
++        std::cerr << "Warning: could not switch to executable directory: " << e.what() << '\n';
++    }
++
++    eka2l1::portmaster::emulator_state state;
++    if (!state.stage_one() || !state.stage_two()) {
++        LOG_ERROR(FRONTEND_CMDLINE, "PortMaster frontend initialization failed");
++        return 3;
++    }
++
++    if (opt.list_apps) {
++        state.list_apps();
++        return 0;
++    }
++    if (!opt.uid) {
++        print_help();
++        return 2;
++    }
++
++    std::thread graphics_thread(graphics_thread_main, std::ref(state));
++    {
++        std::unique_lock<std::mutex> lock(state.ready_mutex);
++        state.ready_cv.wait(lock, [&state]() { return state.graphics_ready.load(); });
++    }
++
++    if (state.graphics_failed || !state.graphics_driver) {
++        state.should_quit = true;
++        if (graphics_thread.joinable()) graphics_thread.join();
++        return 4;
++    }
++
++    std::thread os_thread(os_thread_main, std::ref(state));
++    if (!state.launch_uid(*opt.uid)) {
++        state.should_quit = true;
++    }
++
++    while (!state.should_quit) {
++        std::this_thread::sleep_for(std::chrono::milliseconds(10));
++    }
++
++    wake_os_thread(state);
++    if (state.graphics_driver) {
++        state.graphics_driver->abort();
++    }
++
++    if (os_thread.joinable()) os_thread.join();
++    if (graphics_thread.joinable()) graphics_thread.join();
++    return 0;
++}
+diff -ruN '--exclude=__pycache__' a/src/emu/portmaster/src/screen_presenter.cpp b/src/emu/portmaster/src/screen_presenter.cpp
+--- a/src/emu/portmaster/src/screen_presenter.cpp	1970-01-01 00:00:00.000000000 +0000
++++ b/src/emu/portmaster/src/screen_presenter.cpp	2026-10-08 03:13:24.514702396 +0000
+@@ -0,0 +1,73 @@
++// Copyright (c) 2026 EKA2L1 PortMaster contributors.
++// SPDX-License-Identifier: GPL-3.0-or-later
++#include <portmaster/state.h>
++#include <common/algorithm.h>
++#include <drivers/graphics/graphics.h>
++#include <services/window/screen.h>
++
++namespace eka2l1::portmaster {
++    void draw_screen(drivers::graphics_command_builder &builder, drivers::graphics_driver *driver, epoc::screen *scr,
++                     std::uint32_t window_width, std::uint32_t window_height, const config::state &conf) {
++        if (!scr || window_width == 0 || window_height == 0) return;
++
++        const drivers::filter_option filter = conf.nearest_neighbor_filtering
++            ? drivers::filter_option::nearest : drivers::filter_option::linear;
++
++        const vec2 swapchain_size(static_cast<int>(window_width), static_cast<int>(window_height));
++        rect viewport;
++        viewport.size = swapchain_size;
++
++        builder.set_swapchain_size(swapchain_size);
++        builder.backup_state();
++        builder.bind_bitmap(0);
++        builder.set_feature(drivers::graphics_feature::cull, false);
++        builder.set_feature(drivers::graphics_feature::depth_test, false);
++        builder.set_feature(drivers::graphics_feature::blend, false);
++        builder.set_feature(drivers::graphics_feature::clipping, false);
++        builder.set_feature(drivers::graphics_feature::stencil_test, false);
++        builder.set_viewport(viewport);
++        builder.clear({0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f}, drivers::draw_buffer_bit_color_buffer);
++
++        auto &mode = scr->current_mode();
++        vec2 source_size = mode.size;
++        if (source_size.x <= 0 || source_size.y <= 0) {
++            builder.load_backup_state();
++            return;
++        }
++
++        float scale = std::min(static_cast<float>(swapchain_size.x) / source_size.x,
++                               static_cast<float>(swapchain_size.y) / source_size.y);
++        float width = source_size.x * scale;
++        float height = source_size.y * scale;
++
++        rect src;
++        src.size = source_size;
++        rect dest;
++        dest.top = {static_cast<int>((swapchain_size.x - width) / 2.0f),
++                    static_cast<int>((swapchain_size.y - height) / 2.0f)};
++        dest.size = {static_cast<int>(width), static_cast<int>(height)};
++
++        const float scale_x = width / static_cast<float>(source_size.x);
++        const float scale_y = height / static_cast<float>(source_size.y);
++        scr->set_native_scale_factor(driver, scale_x, scale_y);
++        scr->absolute_pos = dest.top;
++
++        drivers::advance_draw_pos_around_origin(dest, scr->ui_rotation);
++        if (scr->ui_rotation % 180 != 0) {
++            std::swap(dest.size.x, dest.size.y);
++            std::swap(src.size.x, src.size.y);
++        }
++        src.size *= scr->display_scale_factor;
++
++        std::uint32_t flags = 0;
++        if (scr->flags_ & epoc::screen::FLAG_SCREEN_UPSCALE_FACTOR_LOCK) {
++            flags |= drivers::bitmap_draw_flag_use_upscale_shader;
++        }
++
++        builder.set_texture_filter(scr->screen_texture, true, filter);
++        builder.set_texture_filter(scr->screen_texture, false, filter);
++        builder.draw_bitmap(scr->screen_texture, 0, dest, src, vec2(0, 0),
++                            static_cast<float>(scr->ui_rotation), flags);
++        builder.load_backup_state();
++    }
++}
+diff -ruN '--exclude=__pycache__' a/src/emu/portmaster/src/state.cpp b/src/emu/portmaster/src/state.cpp
+--- a/src/emu/portmaster/src/state.cpp	1970-01-01 00:00:00.000000000 +0000
++++ b/src/emu/portmaster/src/state.cpp	2026-10-08 03:13:24.514753692 +0000
+@@ -0,0 +1,177 @@
++// Copyright (c) 2026 EKA2L1 PortMaster contributors.
++// SPDX-License-Identifier: GPL-3.0-or-later
++#include <portmaster/state.h>
++
++#include <common/cvt.h>
++#include <common/fileutils.h>
++#include <common/log.h>
++#include <common/path.h>
++#include <common/version.h>
++#include <drivers/input/common.h>
++#include <kernel/kernel.h>
++#include <package/manager.h>
++#include <services/applist/applist.h>
++#include <services/init.h>
++#include <services/window/window.h>
++#include <system/devices.h>
++#include <utils/apacmd.h>
++
++#include <iomanip>
++#include <iostream>
++
++namespace eka2l1::portmaster {
++    drivers::input_event make_controller_button_event(int jid, int button, bool pressed) {
++        drivers::input_event evt{};
++        evt.type_ = drivers::input_event_type::button;
++        evt.button_.controller_ = jid;
++        evt.button_.button_ = button;
++        evt.button_.state_ = pressed ? drivers::button_state::pressed : drivers::button_state::released;
++        return evt;
++    }
++
++    drivers::input_event make_controller_axis_event(int jid, int button, float x, float y) {
++        drivers::input_event evt{};
++        evt.type_ = drivers::input_event_type::button;
++        evt.button_.controller_ = jid;
++        evt.button_.button_ = button;
++        evt.button_.axis_[0] = x;
++        evt.button_.axis_[1] = y;
++        evt.button_.state_ = drivers::button_state::joy;
++        return evt;
++    }
++
++    bool emulator_state::stage_one() {
++        log::setup_log(nullptr);
++        conf.deserialize();
++        if (log::filterings) log::filterings->parse_filter_string(conf.log_filter);
++        LOG_INFO(FRONTEND_CMDLINE, "EKA2L1 PortMaster/H700 ({}-{})", GIT_BRANCH, GIT_COMMIT_HASH);
++
++        app_settings = std::make_unique<config::app_settings>(&conf);
++        system_create_components comp{};
++        comp.audio_ = nullptr;
++        comp.graphics_ = nullptr;
++        comp.conf_ = &conf;
++        comp.settings_ = app_settings.get();
++        symsys = std::make_unique<system>(comp);
++
++        device_manager *manager = symsys->get_device_manager();
++        if (!manager || manager->total() == 0) {
++            LOG_ERROR(FRONTEND_CMDLINE, "No installed Symbian device/firmware was found in the EKA2L1 data directory");
++            return false;
++        }
++
++        symsys->startup();
++        if (!symsys->set_device(conf.device)) {
++            conf.device = 0;
++            if (!symsys->set_device(0)) {
++                LOG_ERROR(FRONTEND_CMDLINE, "Failed to select an installed device");
++                return false;
++            }
++        }
++        symsys->mount_device_drives();
++        on_system_reset(symsys.get());
++        system_reset_callback = symsys->add_system_reset_callback([this](system *s) { on_system_reset(s); });
++        return true;
++    }
++
++    bool emulator_state::stage_two() {
++        device *dvc = symsys->get_device_manager()->get_current();
++        if (!dvc) return false;
++        LOG_INFO(FRONTEND_CMDLINE, "Device: {} ({})", dvc->model, dvc->firmware_code);
++
++        symsys->mount(drive_z, drive_media::rom, add_path(conf.storage, "/drives/z/"),
++                      io_attrib_internal | io_attrib_write_protected);
++
++        drivers::player_type player = conf.midi_backend == config::MIDI_BACKEND_MINIBAE
++            ? drivers::player_type_minibae : drivers::player_type_tsf;
++        audio_driver = drivers::make_audio_driver(drivers::audio_driver_backend::cubeb,
++                                                  conf.audio_master_volume, player);
++        if (audio_driver) {
++            audio_driver->set_bank_path(drivers::MIDI_BANK_TYPE_HSB, conf.hsb_bank_path);
++            audio_driver->set_bank_path(drivers::MIDI_BANK_TYPE_SF2, conf.sf2_bank_path);
++        }
++        symsys->set_audio_driver(audio_driver.get());
++
++        sensor_driver = drivers::sensor_driver::instantiate();
++        symsys->set_sensor_driver(sensor_driver.get());
++        symsys->initialize_user_parties();
++
++        manager::packages *packages = symsys->get_packages();
++        packages->load_registries();
++        packages->migrate_legacy_registries();
++        on_system_reset(symsys.get());
++        return winserv != nullptr;
++    }
++
++    void emulator_state::on_system_reset(system *sys) {
++        auto *kern = sys ? sys->get_kernel_system() : nullptr;
++        if (!kern) {
++            winserv = nullptr;
++            return;
++        }
++        winserv = reinterpret_cast<window_server *>(kern->get_by_name<service::server>(
++            get_winserv_name_by_epocver(symsys->get_symbian_version_use())));
++    }
++
++    void emulator_state::register_draw_callbacks() {
++        if (!winserv || !graphics_driver || !window) return;
++        epoc::screen *screen = winserv->get_screens();
++        while (screen) {
++            const std::size_t handle = screen->add_screen_redraw_callback(this,
++                [](void *userdata, epoc::screen *scr, bool) {
++                    auto *state = static_cast<emulator_state *>(userdata);
++                    if (!state->graphics_driver || !state->window) return;
++                    state->graphics_driver->wait_for(&state->present_status);
++                    drivers::graphics_command_builder builder;
++                    const vec2 fb = state->window->window_fb_size();
++                    draw_screen(builder, state->graphics_driver.get(), scr, static_cast<std::uint32_t>(fb.x),
++                                static_cast<std::uint32_t>(fb.y), state->conf);
++                    state->present_status = -100;
++                    builder.present(&state->present_status);
++                    drivers::command_list list = builder.retrieve_command_list();
++                    state->graphics_driver->submit_command_list(list);
++                });
++            screen_change_handles.push_back(handle);
++            screen = screen->next;
++        }
++    }
++
++    bool emulator_state::launch_uid(const std::uint32_t uid) {
++        auto *kern = symsys->get_kernel_system();
++        auto *alserv = reinterpret_cast<applist_server *>(kern->get_by_name<service::server>(
++            get_app_list_server_name_by_epocver(kern->get_epoc_version())));
++        if (!alserv) {
++            LOG_ERROR(FRONTEND_CMDLINE, "Application list server is unavailable");
++            return false;
++        }
++        apa_app_registry *reg = alserv->get_registration(uid);
++        if (!reg) {
++            LOG_ERROR(FRONTEND_CMDLINE, "Application UID 0x{:08X} is not installed", uid);
++            return false;
++        }
++
++        epoc::apa::command_line cmdline;
++        cmdline.launch_cmd_ = epoc::apa::command_create;
++        kern->lock();
++        alserv->launch_app(*reg, cmdline, nullptr, [this](kernel::process *) {
++            should_quit = true;
++            if (window) window->request_quit();
++        });
++        kern->unlock();
++        LOG_INFO(FRONTEND_CMDLINE, "Launched application UID 0x{:08X}", uid);
++        return true;
++    }
++
++    void emulator_state::list_apps() {
++        auto *kern = symsys->get_kernel_system();
++        auto *alserv = reinterpret_cast<applist_server *>(kern->get_by_name<service::server>(
++            get_app_list_server_name_by_epocver(kern->get_epoc_version())));
++        if (!alserv) return;
++        for (const auto &reg : alserv->get_registerations()) {
++            if (reg.caps.is_hidden) continue;
++            std::cout << "0x" << std::hex << std::uppercase << std::setw(8) << std::setfill('0')
++                      << reg.mandatory_info.uid << std::dec << "  "
++                      << common::ucs2_to_utf8(reg.mandatory_info.long_caption.to_std_string(nullptr)) << '\n';
++        }
++    }
++}
