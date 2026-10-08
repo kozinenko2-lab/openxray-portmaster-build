@@ -1,0 +1,11 @@
+--- a/src/xrEngine/Device_imgui.cpp
++++ b/src/xrEngine/Device_imgui.cpp
+@@ -82,7 +82,7 @@
+     {
+         if (data->WantVisible)
+         {
+-            const SDL_Rect r
++            SDL_Rect r
+             {
+                 .x = (int)(data->InputPos.x - viewport->Pos.x),
+                 .y = (int)(data->InputPos.y - viewport->Pos.y + data->InputLineHeight),
