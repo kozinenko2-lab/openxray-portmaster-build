@@ -47,7 +47,8 @@ struct X { int v; auto operator<=>(const X&) const = default; };
 int main() { X a{1}, b{2}; return (a < b && f(3u)) ? 0 : 1; }
 EOF
 
-"$NEW_CXX" --sysroot="$SYSROOT" -std=c++20 -mcpu=cortex-a53 -mtune=cortex-a53   /tmp/cxx20_probe.cpp -o /tmp/cxx20_probe
+"$NEW_CXX" --sysroot="$GCC11_SYSROOT" -std=c++20 -mcpu=cortex-a53 -mtune=cortex-a53 \
+  /tmp/cxx20_probe.cpp -o /tmp/cxx20_probe
 
 echo "=== C++20 probe version requirements ==="
 "$READELF" -V /tmp/cxx20_probe | grep -E "GLIBC_|GLIBCXX_|CXXABI_" | tail -40 || true
