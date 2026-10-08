@@ -45,6 +45,7 @@ jobs:
               echo "CMAKE_TOOLCHAIN_FILE=$CMAKE_TOOLCHAIN_FILE"
               "$CC" --version
               git config --global --add safe.directory /root/workspace/eka2l1
+              mkdir -p build-h700
               cmake -S . -B build-h700 -G Ninja \
                 -DCMAKE_BUILD_TYPE=RelWithDebInfo \
                 -DCMAKE_TOOLCHAIN_FILE="$CMAKE_TOOLCHAIN_FILE" \
