@@ -6,7 +6,8 @@ git config --global --add safe.directory /root/workspace/eka2l1
 
 echo "Base H700 compiler:"
 "$CC" --version
-echo "SYSROOT=$SYSROOT"
+BASE_H700_SYSROOT="$SYSROOT"
+echo "BASE_H700_SYSROOT=$BASE_H700_SYSROOT"
 echo "PREFIX_LOCAL=$PREFIX_LOCAL"
 
 mkdir -p /root/workspace/.cache /root/workspace/ci-artifacts
@@ -29,9 +30,11 @@ NEW_CC="$GCC11_DIR/bin/aarch64-none-linux-gnu-gcc"
 NEW_CXX="$GCC11_DIR/bin/aarch64-none-linux-gnu-g++"
 NEW_CC_ROOT="$GCC11_DIR/aarch64-none-linux-gnu"
 READELF="$GCC11_DIR/bin/aarch64-none-linux-gnu-readelf"
+GCC11_SYSROOT="$("$NEW_CXX" --print-sysroot)"
 
 echo "Selected C++20 compiler:"
 "$NEW_CXX" --version
+echo "GCC11_SYSROOT=$GCC11_SYSROOT"
 
 cat >/tmp/cxx20_probe.cpp <<'EOF'
 #include <bit>
@@ -49,6 +52,13 @@ EOF
 echo "=== C++20 probe version requirements ==="
 "$READELF" -V /tmp/cxx20_probe | grep -E "GLIBC_|GLIBCXX_|CXXABI_" | tail -40 || true
 
+# H700 userland target is glibc 2.35. Refuse to produce a binary that silently
+# raises that floor.
+if "$READELF" -V /tmp/cxx20_probe | grep -Eq "GLIBC_2\.(3[6-9]|[4-9][0-9])"; then
+  echo "ERROR: C++20 probe requires glibc newer than 2.35" >&2
+  exit 1
+fi
+
 LIBSTDCPP_REAL="$("$NEW_CXX" --print-file-name=libstdc++.so.6)"
 LIBGCC_REAL="$("$NEW_CXX" --print-file-name=libgcc_s.so.1)"
 echo "GCC11 libstdc++: $LIBSTDCPP_REAL"
@@ -63,8 +73,8 @@ set(CMAKE_SYSTEM_VERSION 1)
 set(CMAKE_SYSTEM_PROCESSOR aarch64)
 set(CMAKE_C_COMPILER "$NEW_CC")
 set(CMAKE_CXX_COMPILER "$NEW_CXX")
-set(CMAKE_SYSROOT "$SYSROOT")
-list(APPEND CMAKE_FIND_ROOT_PATH "$PREFIX_LOCAL" "$SYSROOT" "$NEW_CC_ROOT")
+set(CMAKE_SYSROOT "$GCC11_SYSROOT")
+list(APPEND CMAKE_FIND_ROOT_PATH "$PREFIX_LOCAL" "$GCC11_SYSROOT" "$BASE_H700_SYSROOT" "$NEW_CC_ROOT")
 set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
 set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
 set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
