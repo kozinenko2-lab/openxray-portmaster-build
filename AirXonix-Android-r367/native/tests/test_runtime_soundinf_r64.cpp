@@ -1,0 +1,7 @@
+#include "game/level.hpp"
+#include <cassert>
+#include <cstdint>
+#include <vector>
+static void put32(std::vector<std::uint8_t>& b,std::size_t o,std::uint32_t v){for(int i=0;i<4;++i)b[o+i]=std::uint8_t(v>>(8*i));}
+static void enc(std::vector<std::uint8_t>& b,std::size_t o,const LevelRecord& r){b[o]=r.enemySpeed;b[o+1]=r.enemyTypeACount;b[o+2]=r.enemyTypeBCount;b[o+3]=r.crawlerSpeed;b[o+4]=r.crawlerCount;b[o+5]=r.specialHoming;b[o+6]=r.specialEraser;b[o+7]=r.legacyCheckByte;for(int i=0;i<5;++i){b[o+8+i]=r.shapeType[i];b[o+13+i]=r.shapeX[i];b[o+18+i]=r.shapeY[i];b[o+23+i]=r.shapeRadius[i];}}
+int main(){LevelDatabase baseline;std::vector<std::uint8_t> raw(LegacyModeResourceTrace::resourceBytes,0);put32(raw,0,5);for(std::size_t m=0;m<5;++m){put32(raw,LegacyModeResourceTrace::modeCountsOffset+m*4,LegacyModeResourceTrace::levelCounts[m]);put32(raw,LegacyModeResourceTrace::modeStartsOffset+m*4,LegacyModeResourceTrace::levelStarts[m]);for(std::size_t i=0;i<LegacyModeResourceTrace::levelCounts[m];++i){auto idx=LegacyModeResourceTrace::levelStarts[m]+i;enc(raw,LegacyModeResourceTrace::levelRecordsOffset+idx*28,baseline.level(m,i));}}LevelDatabase runtime(raw);assert(runtime.totalLevels()==82);for(std::size_t m=0;m<5;++m){assert(runtime.modes()[m].levels.size()==baseline.modes()[m].levels.size());const auto&a=runtime.level(m,0);const auto&b=baseline.level(m,0);assert(a.enemySpeed==b.enemySpeed&&a.crawlerCount==b.crawlerCount&&a.shapeRadius==b.shapeRadius);}return 0;}

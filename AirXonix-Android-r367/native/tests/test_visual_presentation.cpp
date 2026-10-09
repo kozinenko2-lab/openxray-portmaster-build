@@ -1,0 +1,57 @@
+#include "render/legacy_models.hpp"
+#include <cassert>
+int main(){
+    const auto& p=LegacyModels::PickupPresentation;
+    assert(p.pitchX2048[0]==512);
+    assert(p.pitchX2048[1]==512);
+    assert(p.pitchX2048[2]==0);
+    assert(p.pitchX2048[3]==512);
+    assert(p.pitchX2048[4]==512);
+    assert(p.pitchX2048[5]==512);
+    assert(p.drawFunction==0x004179B0u);
+    assert(p.sharedAngleGlobal==0x0257DA9Cu);
+    assert(p.angleAdvanceCallsite==0x00417D55u);
+    assert(p.angleAdvancePerMs==2);
+    assert(p.rotateXCall==0x00417D70u);
+    assert(p.rotateYCall==0x00417D80u);
+    assert(p.heartModelHandle==0x025849C8u);
+    assert(p.heartRotateYCall==0x00417F5Cu);
+    assert(p.heartScaleCall==0x00417F8Fu);
+    assert(p.heartScaleBase==0.7f);
+    assert(p.heartScaleAmplitude==0.5f);
+    const auto& sh=LegacyModels::AirEnemyShadowRenderState;
+    assert(sh.textureHandle==0);
+    assert(!sh.alphaBlendEnabled);
+    assert(sh.depthTestEnabled);
+    assert(sh.depthWriteEnabled);
+    assert(sh.legacyZFuncValue==1);
+    assert(sh.d3dZFunc==4);
+    const auto& g=LegacyModels::GroundEnemyPresentation;
+    assert(g.renderLoop==0x00418840u);
+    assert(g.modelLoad==0x00418864u);
+    assert(g.preparedModel==0x0257F5B8u);
+    assert(g.submitCall==0x0041887Au);
+    assert(g.submitRoutine==0x0041ECC0u);
+    assert(!g.perInstanceRotation);
+    const auto& h=LegacyModels::HomingPresentation;
+    assert(h.vertexRotateHelper==0x00401160u);
+    assert(h.helperCall==0x004155CBu);
+    assert(h.radiansPerMs==0.003f);
+    assert(h.rotatesAroundY);
+    const auto& er=LegacyModels::EraserPresentation;
+    assert(er.radiansPhaseGlobal==0x0254A2A4u);
+    assert(er.legacyAngleGlobal==0x0254A2A0u);
+    assert(er.rotateYCall==0x004153EFu);
+    assert(er.scaleCall==0x004153FCu);
+    assert(er.angleUnitsPerMs==2);
+    assert(er.angleMask==0x7fb);
+    assert(er.scaleBase==1.f && er.scaleAmplitude==0.4f);
+    assert(er.bobBaseY==0.005f && er.bobAmplitudeY==0.002f);
+    const auto& a=LegacyModels::AirEnemyPresentation;
+    assert(a.rotateYNegCall==0x0041A465u);
+    assert(a.rotateZCall==0x0041A475u);
+    assert(a.rotateYPosCall==0x0041A485u);
+    assert(a.rotateYHelper==0x00401380u);
+    assert(a.rotateZHelper==0x00401400u);
+    return 0;
+}

@@ -1,0 +1,74 @@
+#pragma once
+
+#include <cstdint>
+#include <string_view>
+
+// r243: SDL_TEXTINPUT is UTF-8 while the original 0x409480 name editor consumes
+// a single Windows-1251 byte/code. Keep conversion SDL-free so it is testable on
+// the host and so no locale/iconv dependency is introduced on PortMaster.
+namespace LegacyTextInput {
+
+inline std::uint32_t firstUtf8CodePoint(std::string_view text){
+    if(text.empty())return 0xffffffffu;
+    const auto b0=static_cast<unsigned char>(text[0]);
+    if(b0<0x80u)return b0;
+    if((b0&0xE0u)==0xC0u && text.size()>=2){
+        const auto b1=static_cast<unsigned char>(text[1]);
+        if((b1&0xC0u)!=0x80u)return 0xffffffffu;
+        const std::uint32_t cp=((b0&0x1Fu)<<6)|(b1&0x3Fu);
+        return cp>=0x80u?cp:0xffffffffu;
+    }
+    if((b0&0xF0u)==0xE0u && text.size()>=3){
+        const auto b1=static_cast<unsigned char>(text[1]);
+        const auto b2=static_cast<unsigned char>(text[2]);
+        if((b1&0xC0u)!=0x80u || (b2&0xC0u)!=0x80u)return 0xffffffffu;
+        const std::uint32_t cp=((b0&0x0Fu)<<12)|((b1&0x3Fu)<<6)|(b2&0x3Fu);
+        return cp>=0x800u && !(cp>=0xD800u && cp<=0xDFFFu)?cp:0xffffffffu;
+    }
+    if((b0&0xF8u)==0xF0u && text.size()>=4){
+        const auto b1=static_cast<unsigned char>(text[1]);
+        const auto b2=static_cast<unsigned char>(text[2]);
+        const auto b3=static_cast<unsigned char>(text[3]);
+        if((b1&0xC0u)!=0x80u || (b2&0xC0u)!=0x80u || (b3&0xC0u)!=0x80u)return 0xffffffffu;
+        const std::uint32_t cp=((b0&0x07u)<<18)|((b1&0x3Fu)<<12)|((b2&0x3Fu)<<6)|(b3&0x3Fu);
+        return cp>=0x10000u && cp<=0x10FFFFu?cp:0xffffffffu;
+    }
+    return 0xffffffffu;
+}
+
+inline int cp1251FromCodePoint(std::uint32_t cp){
+    if(cp<=0x7Fu)return static_cast<int>(cp);
+    if(cp>=0x0410u && cp<=0x044Fu)return 0xC0+static_cast<int>(cp-0x0410u);
+
+    struct Pair{std::uint32_t cp;unsigned char byte;};
+    // Exact defined Windows-1251 mappings below 0xC0. The AirXonix editor
+    // itself accepts only C0..FF (plus selected ASCII); preserving these bytes
+    // is important because e.g. Ё/A8 intentionally falls through to '~'.
+    static constexpr Pair extra[]={
+        {0x0402,0x80},{0x0403,0x81},{0x201A,0x82},{0x0453,0x83},
+        {0x201E,0x84},{0x2026,0x85},{0x2020,0x86},{0x2021,0x87},
+        {0x20AC,0x88},{0x2030,0x89},{0x0409,0x8A},{0x2039,0x8B},
+        {0x040A,0x8C},{0x040C,0x8D},{0x040B,0x8E},{0x040F,0x8F},
+        {0x0452,0x90},{0x2018,0x91},{0x2019,0x92},{0x201C,0x93},
+        {0x201D,0x94},{0x2022,0x95},{0x2013,0x96},{0x2014,0x97},
+        {0x2122,0x99},{0x0459,0x9A},{0x203A,0x9B},{0x045A,0x9C},
+        {0x045C,0x9D},{0x045B,0x9E},{0x045F,0x9F},{0x00A0,0xA0},
+        {0x040E,0xA1},{0x045E,0xA2},{0x0408,0xA3},{0x00A4,0xA4},
+        {0x0490,0xA5},{0x00A6,0xA6},{0x00A7,0xA7},{0x0401,0xA8},
+        {0x00A9,0xA9},{0x0404,0xAA},{0x00AB,0xAB},{0x00AC,0xAC},
+        {0x00AD,0xAD},{0x00AE,0xAE},{0x0407,0xAF},{0x00B0,0xB0},
+        {0x00B1,0xB1},{0x0406,0xB2},{0x0456,0xB3},{0x0491,0xB4},
+        {0x00B5,0xB5},{0x00B6,0xB6},{0x00B7,0xB7},{0x0451,0xB8},
+        {0x2116,0xB9},{0x0454,0xBA},{0x00BB,0xBB},{0x0458,0xBC},
+        {0x0405,0xBD},{0x0455,0xBE},{0x0457,0xBF},
+    };
+    for(const auto& p:extra)if(p.cp==cp)return p.byte;
+    return -1;
+}
+
+inline int cp1251FromUtf8(std::string_view text){
+    const auto cp=firstUtf8CodePoint(text);
+    return cp==0xffffffffu?-1:cp1251FromCodePoint(cp);
+}
+
+} // namespace LegacyTextInput

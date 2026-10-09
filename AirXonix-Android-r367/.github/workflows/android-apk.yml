@@ -1,0 +1,53 @@
+name: Build AirXonix r367 Android (generated assets)
+on:
+  push:
+    branches: [airxonix-r367-h700-android]
+  workflow_dispatch:
+jobs:
+  apk:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+      - name: Install Android toolchains
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager 'platforms;android-35' 'build-tools;35.0.0' 'ndk;27.2.12479018' 'cmake;3.22.1'
+      - name: Expand H700 + Android source archive
+        shell: bash
+        run: |
+          python3 - <<'PYEXTRACT'
+          from pathlib import Path
+          from zipfile import ZipFile
+          with ZipFile('AirXonix-H700-Android-r367-public-source.zip') as z:
+              z.extractall('build_source')
+          PYEXTRACT
+      - name: Create original-free assets
+        working-directory: build_source/AirXonix-Android-r367
+        shell: bash
+        run: |
+          python3 -m pip install --disable-pip-version-check numpy pillow
+          python3 native/tools/generate_cleanroom_resources.py generated/cleanroom
+          cp generated/AirXonix-cleanroom.zip app/src/main/assets/AirXonix-cleanroom.zip
+      - name: Install matched SDL2 Java and native source
+        working-directory: build_source/AirXonix-Android-r367
+        run: bash scripts/prepare_sdl2.sh
+      - name: Build Android debug APK (ARM64)
+        working-directory: build_source/AirXonix-Android-r367
+        run: gradle --no-daemon --console=plain :app:assembleDebug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AirXonix-r367-Android-ARM64-cleanroom
+          path: build_source/AirXonix-Android-r367/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error

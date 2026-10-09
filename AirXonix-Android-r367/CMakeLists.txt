@@ -1,0 +1,13 @@
+cmake_minimum_required(VERSION 3.22.1)
+project(AirXonixAndroid LANGUAGES C CXX)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+# Required: scripts/prepare_sdl2.sh before invoking Gradle.
+if(NOT EXISTS "${CMAKE_SOURCE_DIR}/third_party/SDL/CMakeLists.txt")
+  message(FATAL_ERROR "SDL2 missing: run bash scripts/prepare_sdl2.sh")
+endif()
+set(SDL_SHARED ON CACHE BOOL "Build SDL2 shared" FORCE)
+set(SDL_STATIC OFF CACHE BOOL "Do not build SDL2 static" FORCE)
+set(SDL_TEST OFF CACHE BOOL "Disable SDL2 tests" FORCE)
+add_subdirectory(third_party/SDL)
+add_subdirectory(native)

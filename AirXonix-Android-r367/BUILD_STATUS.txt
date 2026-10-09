@@ -1,0 +1,24 @@
+AirXonix Android ARM64 r367 -- source + original EXE/MUSIC bundled
+
+STATUS: Android APK NOT BUILT (missing Android SDK, NDK, Gradle in this runtime).
+Do not rename this ZIP to .apk or treat it as an installable APK.
+
+Included:
+- Full r367 cleanroom-native C++ port
+- Android CMake shared native libmain.so target / SDL2 official JNI bridge checkout helper
+- Android Activity asset installer, multitouсh controls, controller and vibrator support
+- Original AirXonix.wrp.exe and all 11 MUSIC files (user-supplied prior PLAYTEST archive)
+- r367 cleanroom resource pack as fallback; app copies from APK to private storage automatically
+- GitHub Actions workflow for hosted Android APK build (user's own private repository)
+
+Validation in this runtime:
+- original EXE + 11 original music tracks + fallback ZIP: present, passed
+- Android manifest XML: passed
+- Android CMake and native source host CMake config: passed (not NDK linking)
+- JNI native / C++ runtime source with __ANDROID__ platform code syntax-only: 10/10 passed
+- Native regression subset 5/5 PASS (menu, audio, settings, main menu logo, r367)
+- shell syntax and GitHub Actions YAML: passed
+- Android APK compilation/device validation: NOT EXECUTED
+
+Build: bash scripts/prepare_sdl2.sh && gradle :app:assembleDebug
+Output after successful build: app/build/outputs/apk/debug/app-debug.apk

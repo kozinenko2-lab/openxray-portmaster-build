@@ -1,0 +1,12 @@
+# Personal original commercial game resources: NEVER commit to public GitHub
+app/src/main/assets/AirXonix.wrp.exe
+app/src/main/assets/MUSIC/
+app/src/main/assets/AirXonix-cleanroom.zip
+app/build/
+.gradle/
+.cxx/
+build/
+third_party/
+local.properties
+*.apk
+*.aab
