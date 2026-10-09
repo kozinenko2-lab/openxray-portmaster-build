@@ -28,6 +28,7 @@ jobs:
           patch -p1 < ../eka2l1-ci/EKA2L1-PortMaster-H700-v2.patch
           python3 ../eka2l1-ci/apply-v3.1.py
           patch -p1 --batch < ../eka2l1-ci/EKA2L1-PortMaster-H700-v3.1-to-v3.2.patch
+          python3 ../eka2l1-ci/apply-v3.2-final.py
           git status --short
 
       - name: Cache Arm GCC 11.3
