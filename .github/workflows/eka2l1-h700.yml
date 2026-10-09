@@ -3,7 +3,7 @@ name: EKA2L1 H700 PortMaster CI
 on:
   push:
     branches:
-      - eka2l1-h700-ci
+      - eka2l1-h700-v3.2
   workflow_dispatch:
 
 jobs:
@@ -14,7 +14,7 @@ jobs:
       - name: Checkout CI harness
         uses: actions/checkout@v4
         with:
-          ref: eka2l1-h700-ci
+          ref: eka2l1-h700-v3.2
 
       - name: Clone pinned EKA2L1 with submodules
         shell: bash
@@ -27,6 +27,7 @@ jobs:
           git submodule update --init --recursive
           patch -p1 < ../eka2l1-ci/EKA2L1-PortMaster-H700-v2.patch
           python3 ../eka2l1-ci/apply-v3.1.py
+          patch -p1 --batch < ../eka2l1-ci/EKA2L1-PortMaster-H700-v3.1-to-v3.2.patch
           git status --short
 
       - name: Cache Arm GCC 11.3
