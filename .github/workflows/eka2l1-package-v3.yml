@@ -1,0 +1,167 @@
+name: EKA2L1 H700 Fast Package v3
+
+on:
+  push:
+    branches:
+      - eka2l1-h700-v3
+    paths:
+      - '.github/workflows/eka2l1-package-v3.yml'
+      - 'eka2l1-ci/**'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout package harness
+        uses: actions/checkout@v4
+        with:
+          ref: eka2l1-h700-v3
+
+      - name: Download successful H700 ELF artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: eka2l1-h700-ci
+          path: input-artifact
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: kozinenko2-lab/openxray-portmaster-build
+          run-id: 37865300058
+
+      - name: Fetch pinned runtime assets
+        shell: bash
+        run: |
+          set -euxo pipefail
+          git clone --filter=blob:none https://github.com/EKA2L1/EKA2L1.git upstream
+          cd upstream
+          git checkout 11f5b6cd141c0884a130ee45743f1f5e17bb1783
+          git submodule update --init --depth 1 src/emu/drivers/resources/upscale || true
+
+      - name: Assemble PortMaster runtime
+        shell: bash
+        run: |
+          set -euxo pipefail
+          OUT="$PWD/EKA2L1"
+          mkdir -p "$OUT/libs" "$OUT/resources/upscale" "$OUT/compat" "$OUT/patch" "$OUT/config" "$OUT/cache"
+
+          cp input-artifact/eka2l1_portmaster "$OUT/eka2l1_portmaster"
+          cp input-artifact/libstdc++.so.6 "$OUT/libs/libstdc++.so.6"
+          cp input-artifact/libgcc_s.so.1 "$OUT/libs/libgcc_s.so.1"
+
+          cp -a upstream/src/emu/drivers/resources/gles/. "$OUT/resources/"
+          cp upstream/src/emu/drivers/resources/defaultbank.hsb "$OUT/resources/"
+          cp upstream/src/emu/drivers/resources/defaultbank.sf2 "$OUT/resources/"
+          if [ -d upstream/src/emu/drivers/resources/upscale ]; then
+            cp -a upstream/src/emu/drivers/resources/upscale/. "$OUT/resources/upscale/" || true
+          fi
+          cp -a upstream/miscs/compat/. "$OUT/compat/"
+          find upstream/src/patch -type f -path '*/group/*' -exec cp -a {} "$OUT/patch/" \;
+
+          cat > "$OUT/resources/gamecontrollerdb-h700.txt" <<'EOF'
+          19000000010000000100000000016e01,ANBERNIC-keys,a:b1,b:b0,x:b3,y:b2,back:b6,start:b7,guide:b8,leftshoulder:b4,rightshoulder:b5,leftstick:b9,rightstick:b10,lefttrigger:a2,righttrigger:a5,leftx:a0,lefty:a1,rightx:a3,righty:a4,dpup:h0.1,dpdown:h0.4,dpleft:h0.8,dpright:h0.2,platform:Linux,
+          EOF
+
+          cat > "$OUT/EKA2L1.sh" <<'EOF'
+          #!/bin/sh
+          GAMEDIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+          cd "$GAMEDIR" || exit 1
+          export HOME="$GAMEDIR"
+          export XDG_CONFIG_HOME="$GAMEDIR/config"
+          export XDG_CACHE_HOME="$GAMEDIR/cache"
+          export LD_LIBRARY_PATH="$GAMEDIR/libs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+          mkdir -p "$XDG_CONFIG_HOME" "$XDG_CACHE_HOME"
+          LOG="$GAMEDIR/EKA2L1.log"
+          : > "$LOG"
+          if [ -n "${EKA2L1_SDL_VIDEODRIVER:-}" ]; then
+              export SDL_VIDEODRIVER="$EKA2L1_SDL_VIDEODRIVER"
+          fi
+          UID_ARG="${1:-${EKA2L1_APP_UID:-}}"
+          if [ -z "$UID_ARG" ]; then
+              echo "No Symbian app UID supplied. Installed apps:" >> "$LOG"
+              exec "$GAMEDIR/eka2l1_portmaster" --list-apps >> "$LOG" 2>&1
+          fi
+          exec "$GAMEDIR/eka2l1_portmaster" --uid "$UID_ARG" >> "$LOG" 2>&1
+          EOF
+          chmod +x "$OUT/EKA2L1.sh" "$OUT/eka2l1_portmaster"
+
+          cat > "$OUT/README_TEST_RU.txt" <<'EOF'
+          EKA2L1 PortMaster / H700 — тестовая сборка v3
+
+          Цель: Anbernic H700, ARM64, PortMaster, SDL2, native OpenGL ES 3.
+
+          Первый запуск без UID:
+            ./EKA2L1.sh
+          Список установленных Symbian приложений будет записан в EKA2L1.log.
+
+          Запуск приложения:
+            ./EKA2L1.sh 0x12345678
+
+          Если прошивка требует Mali fbdev SDL backend:
+            EKA2L1_SDL_VIDEODRIVER=mali ./EKA2L1.sh 0x12345678
+
+          Лог всегда находится рядом с портом: EKA2L1.log.
+          Firmware/device storage EKA2L1 необходимо подготовить отдельно.
+          EOF
+
+      - name: Add H700 shared libraries and strip
+        shell: bash
+        run: |
+          set -euxo pipefail
+          docker pull ghcr.io/loveretro/h700-toolchain:latest
+          docker run --rm -v "$PWD/EKA2L1:/out" ghcr.io/loveretro/h700-toolchain:latest bash -lc '
+            set -euxo pipefail
+            "$CROSS_ROOT/bin/$CROSS_TRIPLE-strip" --strip-unneeded /out/eka2l1_portmaster
+
+            SDL2_REAL="$(find "$PREFIX_LOCAL/lib" -type f \( -name "libSDL2-2.0.so.*" -o -name "libSDL2.so.*" \) -print -quit)"
+            SAMPLERATE_REAL="$(find "$SYSROOT" -type f -name "libsamplerate.so.0*" -print -quit)"
+            ZLIB_REAL="$(find "$SYSROOT" -type f -name "libz.so.1*" -print -quit)"
+            PNG12_REAL="$(find "$SYSROOT" -type f -name "libpng12.so.0*" -print -quit)"
+            BZ2_REAL="$(find "$SYSROOT" -type f -name "libbz2.so.1.0*" -print -quit)"
+
+            test -n "$SDL2_REAL"
+            test -n "$SAMPLERATE_REAL"
+            test -n "$ZLIB_REAL"
+            test -n "$PNG12_REAL"
+            test -n "$BZ2_REAL"
+
+            cp -L "$SDL2_REAL" /out/libs/libSDL2-2.0.so.0
+            cp -L "$SAMPLERATE_REAL" /out/libs/libsamplerate.so.0
+            cp -L "$ZLIB_REAL" /out/libs/libz.so.1
+            cp -L "$PNG12_REAL" /out/libs/libpng12.so.0
+            cp -L "$BZ2_REAL" /out/libs/libbz2.so.1.0
+          '
+
+      - name: Validate package
+        shell: bash
+        run: |
+          set -euxo pipefail
+          sh -n EKA2L1/EKA2L1.sh
+          file EKA2L1/eka2l1_portmaster
+          readelf -h EKA2L1/eka2l1_portmaster | grep -E 'Class:|Machine:'
+          readelf -d EKA2L1/eka2l1_portmaster | grep NEEDED
+          echo "Max GLIBC requirement:"
+          readelf -V EKA2L1/eka2l1_portmaster | grep -oE 'GLIBC_[0-9]+\.[0-9]+' | sort -Vu | tail -1
+          echo "Runtime files:"
+          find EKA2L1 -maxdepth 2 -type f -printf '%P %s bytes\n' | sort
+          du -sh EKA2L1
+
+      - name: Create archives
+        shell: bash
+        run: |
+          set -euxo pipefail
+          tar -czf EKA2L1-PortMaster-H700-v3-test.tar.gz EKA2L1
+          (cd EKA2L1 && sha256sum eka2l1_portmaster libs/* > SHA256SUMS.txt)
+          sha256sum EKA2L1-PortMaster-H700-v3-test.tar.gz > EKA2L1-PortMaster-H700-v3-test.tar.gz.sha256
+
+      - name: Upload PortMaster package
+        uses: actions/upload-artifact@v4
+        with:
+          name: EKA2L1-PortMaster-H700-v3-test
+          path: |
+            EKA2L1-PortMaster-H700-v3-test.tar.gz
+            EKA2L1-PortMaster-H700-v3-test.tar.gz.sha256
+          if-no-files-found: error
