@@ -30,7 +30,10 @@ jobs:
           yes | "$SDKMANAGER" --licenses >/dev/null || true
           "$SDKMANAGER" 'platforms;android-35' 'build-tools;35.0.0' 'ndk;27.2.12479018' 'cmake;3.22.1'
       - name: Extract source archive
-        run: python3 -c "import zipfile; zipfile.ZipFile('AirXonix-H700-Android-r372-public-source.zip').extractall('build_source')"
+        run: |
+          python3 -c "import zipfile; zipfile.ZipFile('AirXonix-H700-Android-r372-public-source.zip').extractall('build_source')"
+          test -s build_source/AirXonix-Android-r367/build.gradle
+          test -s build_source/AirXonix-Android-r367/settings.gradle
       - name: Generate clean-room assets
         working-directory: build_source/AirXonix-Android-r367
         run: |
@@ -50,6 +53,18 @@ jobs:
           cmake -S native -B build-native-tests -DAIRXONIX_BUILD_RUNTIME=OFF -DAIRXONIX_BUILD_TESTS=ON
           cmake --build build-native-tests --target test_android_virtual_input_r372 test_android_touch_bridge_r371 -j 2
           ctest --test-dir build-native-tests -R 'android_virtual_input_r372|android_touch_bridge_r371' --output-on-failure
+      - name: Export APK signing tools for offline personal packaging
+        shell: bash
+        run: |
+          SDK_DIR="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          mkdir -p signing-kit
+          cp "$SDK_DIR/build-tools/35.0.0/lib/apksigner.jar" signing-kit/apksigner.jar
+          cp "$SDK_DIR/build-tools/35.0.0/apksigner" signing-kit/apksigner
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AirXonix-signing-kit
+          path: signing-kit/
+          if-no-files-found: error
       - name: Build ARM64 APK
         working-directory: build_source/AirXonix-Android-r367
         run: gradle --no-daemon --console=plain :app:assembleDebug
