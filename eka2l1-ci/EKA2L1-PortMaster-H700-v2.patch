@@ -1022,7 +1022,7 @@ diff -ruN '--exclude=__pycache__' a/src/emu/drivers/src/network/tls_trust_posix.
 diff -ruN '--exclude=__pycache__' a/src/emu/portmaster/CMakeLists.txt b/src/emu/portmaster/CMakeLists.txt
 --- a/src/emu/portmaster/CMakeLists.txt	1970-01-01 00:00:00.000000000 +0000
 +++ b/src/emu/portmaster/CMakeLists.txt	2026-10-08 03:23:49.457978827 +0000
-@@ -0,0 +1,87 @@
+@@ -0,0 +1,88 @@
 +cmake_minimum_required(VERSION 3.8)
 +
 +add_executable(eka2l1_portmaster
@@ -1030,6 +1030,7 @@ diff -ruN '--exclude=__pycache__' a/src/emu/portmaster/CMakeLists.txt b/src/emu/
 +    include/portmaster/state.h
 +    src/emu_window_sdl2.cpp
 +    src/main.cpp
++    src/platform_stubs.cpp
 +    src/screen_presenter.cpp
 +    src/state.cpp)
 +
@@ -1873,6 +1874,46 @@ diff -ruN '--exclude=__pycache__' a/src/emu/portmaster/src/state.cpp b/src/emu/p
 +            std::cout << "0x" << std::hex << std::uppercase << std::setw(8) << std::setfill('0')
 +                      << reg.mandatory_info.uid << std::dec << "  "
 +                      << common::ucs2_to_utf8(reg.mandatory_info.long_caption.to_std_string(nullptr)) << '\n';
++        }
++    }
++}
+diff -ruN '--exclude=__pycache__' a/src/emu/portmaster/src/platform_stubs.cpp b/src/emu/portmaster/src/platform_stubs.cpp
+--- a/src/emu/portmaster/src/platform_stubs.cpp	1970-01-01 00:00:00.000000000 +0000
++++ b/src/emu/portmaster/src/platform_stubs.cpp	2026-10-09 00:00:00.000000000 +0000
+@@ -0,0 +1,36 @@
++// Copyright (c) 2026 EKA2L1 PortMaster contributors.
++// SPDX-License-Identifier: GPL-3.0-or-later
++
++#include <common/applauncher.h>
++#include <common/log.h>
++#include <drivers/ui/input_dialog.h>
++
++namespace eka2l1::common {
++    bool launch_browser(const std::string &url) {
++        LOG_WARN(FRONTEND_UI, "Host browser launch is unavailable in PortMaster: {}", url);
++        return false;
++    }
++}
++
++namespace eka2l1::drivers::ui {
++    bool open_input_view(const std::u16string &, const int,
++        input_dialog_complete_callback) {
++        // The first H700 frontend has no on-screen text editor yet. Returning
++        // false lets HUI fail the request cleanly instead of leaving it pending.
++        LOG_WARN(FRONTEND_UI, "Text input view requested but PortMaster text UI is not implemented yet");
++        return false;
++    }
++
++    void close_input_view() {
++    }
++
++    void show_yes_no_dialog(const std::u16string &, const std::u16string &,
++        const std::u16string &, yes_no_dialog_complete_callback complete_callback) {
++        // Keep guest notifier requests from hanging on a frontend without a
++        // modal UI. Button 1 mirrors the minimal test frontend behaviour.
++        LOG_WARN(FRONTEND_UI, "Yes/no dialog requested; selecting first button on PortMaster");
++        if (complete_callback) {
++            complete_callback(1);
 +        }
 +    }
 +}
