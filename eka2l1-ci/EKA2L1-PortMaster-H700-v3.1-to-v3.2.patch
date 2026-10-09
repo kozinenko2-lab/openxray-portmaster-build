@@ -1,0 +1,1153 @@
+diff -ruN '--exclude=__pycache__' a/portmaster/AUDIT_V3.2_EN.md b/portmaster/AUDIT_V3.2_EN.md
+--- a/portmaster/AUDIT_V3.2_EN.md	1970-01-01 00:00:00.000000000 +0000
++++ b/portmaster/AUDIT_V3.2_EN.md	2026-10-09 15:37:30.018503557 +0000
+@@ -0,0 +1,9 @@
++# EKA2L1 PortMaster H700 v3.2 audit
++
++Previous v3.1 binary: verified ELF64 AArch64, maximum GLIBC_2.35. Source: upstream EKA2L1 pinned to 11f5b6cd141c0884a130ee45743f1f5e17bb1783 plus PortMaster patches.
++
++Added separate SDL2 (Qt-free) host file browser with A/B, D-pad, left stick, Cyrillic file labels, directory traversal confined to `firmware/` and `games/`, and native EKA2L1 installers for supported firmware dumps and SIS/SISX packages.
++
++The browser C++ translation unit passed host compiler `-std=c++20 -Wall -Wextra -Werror -fsyntax-only` with bundled SDL headers. PortMaster launcher passed `sh -n`. A full ARM64 build/test was NOT performed for v3.2 (missing submodules / toolchain locally). v3.1 ELF is not a compiled v3.2 build.
++
++Remaining risks: SDL GLES2 menu support on real H700 firmware, firmware variants (first variant is chosen), specific device/game compatibility, installation progress UI, on-device controller mapping and native GLES3 games.
+diff -ruN '--exclude=__pycache__' a/portmaster/AUDIT_V3.2_RU.md b/portmaster/AUDIT_V3.2_RU.md
+--- a/portmaster/AUDIT_V3.2_RU.md	1970-01-01 00:00:00.000000000 +0000
++++ b/portmaster/AUDIT_V3.2_RU.md	2026-10-09 15:41:07.482493517 +0000
+@@ -0,0 +1,37 @@
++# EKA2L1 PortMaster/H700 — исходный аудит v3.2
++
++Основа: восстановленные исходники v3.1 EKA2L1 с привязкой upstream 11f5b6cd141c0884a130ee45743f1f5e17bb1783, OpenGL ES 3.0, ARM64, SDL2.
++
++## Проверенные аспекты
++
++- Формат предыдущего ELF: ELF64 AArch64, динамический ELF, GLIBC не выше 2.35 (проверено readelf).
++- Исходный PortMaster CMake: целевой режим выключает Qt, использует SDL2 и OpenGL ES3 для рендеринга эмулятора.
++- Браузер `src/file_browser.cpp`: отдельно от Symbian, SDL2 без Qt; `g++ -std=c++20 -Wall -Wextra -Werror -fsyntax-only` с заголовками SDL2 прошёл.
++- Выбор файлов: отдельные root-папки `firmware`/`games`; переход за root через `..` и симлинки заблокирован.
++- Форматы: ROM/RPKG/VPL/7z/zip через EKA2L1 core; SIS/SISX через `system::install_package`.
++- Установка прошивки запускается до `stage_one()`; иначе первый запуск без firmware отказывал бы на этапе загрузки Symbian.
++- SIS/SISX установка запускается лишь после успешной `stage_one()`/`stage_two()`; для основной установки используется drive_e, как в Qt-интерфейсе.
++- Директории прошивки/игр не являются автоматически смонтированными ROM: это только исходные файлы, установщики сохраняют данные в `data/`.
++- Лаунчер открывает файловый менеджер по умолчанию; журнал `EKA2L1/EKA2L1.log`.
++
++## Выявленные ограничения и риски
++
++1. **Весь upstream не пересобран на этой итерации.** В пользовательском ZIP есть 40 отсутствующих git submodules и в локальной среде нет полноценного ARM64 sysroot. Результат статического аудита нельзя считать безошибочной компиляцией всего проекта.
++2. **Работа GLES2 SDL_Renderer в файловом меню на конкретной прошивке H700 пока не проверена.** Для меню запрошен нативный GLES2, далее идёт software fallback; внутри эмулятора отдельный OpenGL ES3.
++3. **Подбор VPL-вариантов:** без нового диалога выбирается первый; это надо уточнить для пакетов Nokia с несколькими продуктами.
++4. **Нельзя гарантировать установку произвольной Symbian OS**: зависит от корректности ROM/RPKG/VPL/архива, поддерживаемой модели телефона и доступных компонентов эмулятора.
++5. **SIS/SISX:** установка приложений в virtual drive E требует соответствующего устройства/поддерживаемых зависимостей; ошибки записываются в журнал.
++6. **Пока нет файлового менеджера внутри эмулируемой Symbian** — создан файловый браузер *хостового* PortMaster frontend для поиска установщиков; это разные задачи.
++7. **ARM64 ELF v3.1 не заменять файлами из этого архива исходников:** бинарник v3.2 не скомпилирован. До новой компиляции новые GUI/инсталлятор не заработают; простая копия директорий этого не заменит.
++8. **Окно установки:** крупные дампы выполняются синхронно, отдельного прогресс-диалога нет. Результат после операции сохраняется в `install_status.txt` и выводится при повторном открытии меню.
++
++## Дальнейшая проверка
++
++1. Собрать `eka2l1_portmaster` на H700 SDK с восстановленными submodules.
++2. Проверить native SDL GLES2 меню на MuOS (Mali fbdev), GLES3 игры.
++3. Прогнать ROM + RPKG и ZIP, SIS/SISX, отображение русского имени файла, выбор устройств по нескольким VPL.
++4. Проверить управление A/B, DPad/стиком на физической Anbernic; снять EKA2L1.log.
++
++## Фактический результат CMake в локальном окружении
++
++`cmake -S . -B cmake-audit -G Ninja -DEKA2L1_PORTMASTER=ON ...` завершился ошибкой конфигурации: не хватает подмодулей `ffmpeg`, `capstone`, `libfat`, `mbedtls`, а также `SDL2Config.cmake`/`sdl2-config.cmake`. Вопросы совместимости этих third-party библиотек с ARM64 нельзя закрыть, пока не восстановлены зависимости в H700 CI. Проверка интерфейсного `file_browser.cpp` отдельно прошла с `g++ -std=c++20 -Wall -Wextra -Werror -fsyntax-only`.
+diff -ruN '--exclude=__pycache__' a/portmaster/EKA2L1.sh b/portmaster/EKA2L1.sh
+--- a/portmaster/EKA2L1.sh	2026-10-09 05:22:26.000000000 +0000
++++ b/portmaster/EKA2L1.sh	2026-10-09 15:38:57.085274414 +0000
+@@ -1,41 +1,12 @@
+ #!/bin/sh
+-# EKA2L1 PortMaster / H700 launcher
++# Internal game-folder launcher. Normally start via ../EKA2L1.sh in ports/.
+ GAMEDIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+ cd "$GAMEDIR" || exit 1
+-
++mkdir -p firmware games data config cache
+ export HOME="$GAMEDIR"
+ export XDG_CONFIG_HOME="$GAMEDIR/config"
+ export XDG_CACHE_HOME="$GAMEDIR/cache"
+ export LD_LIBRARY_PATH="$GAMEDIR/libs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+-mkdir -p "$XDG_CONFIG_HOME" "$XDG_CACHE_HOME"
+-
+-# Some H700 firmware SDL builds require the vendor fbdev video backend.  Leave
+-# autodetection alone by default, but allow the port package/CFW to force it:
+-#   EKA2L1_SDL_VIDEODRIVER=mali ./EKA2L1.sh 0x12345678
+-if [ -n "${EKA2L1_SDL_VIDEODRIVER:-}" ]; then
+-    export SDL_VIDEODRIVER="$EKA2L1_SDL_VIDEODRIVER"
+-fi
+-
+-# Log-only checks also work with the pre-existing v3 runtime binary.
+-if [ "${1:-}" = "--diagnose" ]; then
+-    echo "Kernel: $(uname -a 2>/dev/null || true)" >> "$GAMEDIR/EKA2L1.log"
+-    for node in /dev/fb0 /dev/mali /dev/mali0 /dev/dri/card0 /dev/input/js0; do
+-        [ -e "$node" ] && ls -l "$node" >> "$GAMEDIR/EKA2L1.log" 2>&1
+-    done
+-    [ -r /proc/bus/input/devices ] && cat /proc/bus/input/devices >> "$GAMEDIR/EKA2L1.log"
+-    exit 0
+-fi
+-
+-# A standalone preflight path is available before Symbian firmware installation.
+-if [ "${1:-}" = "--probe" ]; then
+-    shift
+-    exec "$GAMEDIR/eka2l1_portmaster" --probe "$@" >> "$GAMEDIR/EKA2L1.log" 2>&1
+-fi
+-
+-UID_ARG="${1:-${EKA2L1_APP_UID:-}}"
+-if [ -z "$UID_ARG" ]; then
+-    echo "No Symbian app UID supplied. Installed apps:" >> "$GAMEDIR/EKA2L1.log"
+-    exec "$GAMEDIR/eka2l1_portmaster" --list-apps >> "$GAMEDIR/EKA2L1.log" 2>&1
+-fi
+-
+-exec "$GAMEDIR/eka2l1_portmaster" --uid "$UID_ARG" >> "$GAMEDIR/EKA2L1.log" 2>&1
++[ -n "${EKA2L1_SDL_VIDEODRIVER:-}" ] && export SDL_VIDEODRIVER="$EKA2L1_SDL_VIDEODRIVER"
++if [ "$#" -eq 0 ]; then set -- --menu; fi
++exec "$GAMEDIR/eka2l1_portmaster" "$@" >> "$GAMEDIR/EKA2L1.log" 2>&1
+diff -ruN '--exclude=__pycache__' a/portmaster/PortMasterLauncher.sh b/portmaster/PortMasterLauncher.sh
+--- a/portmaster/PortMasterLauncher.sh	1970-01-01 00:00:00.000000000 +0000
++++ b/portmaster/PortMasterLauncher.sh	2026-10-09 15:36:32.853600984 +0000
+@@ -0,0 +1,56 @@
++#!/bin/sh
++# EKA2L1 v3.2 PortMaster / H700, one parent-level launcher.
++[ -f /etc/profile ] && . /etc/profile
++PORTDIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
++GAMEDIR="$PORTDIR/EKA2L1"
++LOG="$GAMEDIR/EKA2L1.log"
++cd "$GAMEDIR" || exit 1
++mkdir -p firmware games data config cache
++export HOME="$GAMEDIR"
++export XDG_CONFIG_HOME="$GAMEDIR/config"
++export XDG_CACHE_HOME="$GAMEDIR/cache"
++export LD_LIBRARY_PATH="$GAMEDIR/libs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
++[ -n "${EKA2L1_SDL_VIDEODRIVER:-}" ] && export SDL_VIDEODRIVER="$EKA2L1_SDL_VIDEODRIVER"
++: > "$LOG"
++echo "EKA2L1 PortMaster H700 v3.2 | $(date 2>/dev/null || true)" >> "$LOG"
++echo "Video: ${SDL_VIDEODRIVER:-auto} | ARCH: $(uname -m 2>/dev/null || true)" >> "$LOG"
++if [ ! -x "$GAMEDIR/eka2l1_portmaster" ]; then
++    echo "ERROR: missing/non-executable eka2l1_portmaster" >> "$LOG"
++    exit 127
++fi
++# One-shot diagnostic requests from earlier versions remain supported.
++if [ -f probe_once.flag ]; then
++    rm -f probe_once.flag
++    set -- --probe --probe-seconds 15
++elif [ -f diagnose_once.flag ]; then
++    rm -f diagnose_once.flag
++    set -- --diagnose
++fi
++if [ "${1:-}" = "--diagnose" ]; then
++    echo "=== Kernel / video / controller devices ===" >> "$LOG"
++    uname -a >> "$LOG" 2>&1 || true
++    for path in /dev/mali /dev/mali0 /dev/fb0 /dev/dri/card0 /dev/input/js0; do
++        [ ! -e "$path" ] || ls -l "$path" >> "$LOG" 2>&1
++    done
++    [ ! -r /proc/bus/input/devices ] || cat /proc/bus/input/devices >> "$LOG"
++    exit 0
++fi
++# Any user command-line flags go through unmodified. Default: menu.
++if [ "$#" -eq 0 ]; then
++    if [ "${EKA2L1_START_MODE:-menu}" = "uid" ]; then
++        UID_ARG="${EKA2L1_APP_UID:-}"
++        if [ -z "$UID_ARG" ] && [ -f game_uid.txt ]; then
++            UID_ARG="$(sed -e 's/[#;].*$//' -e 's/[[:space:]]//g' game_uid.txt | sed -n '/./{p;q;}')"
++        fi
++        if [ -n "$UID_ARG" ]; then set -- --uid "$UID_ARG"; else set -- --menu; fi
++    else
++        set -- --menu
++    fi
++elif [ "${1#-}" = "$1" ]; then
++    # Backward-compatible direct UID positional argument.
++    set -- --uid "$1"
++fi
++"$GAMEDIR/eka2l1_portmaster" "$@" >> "$LOG" 2>&1
++RC=$?
++echo "Exit code: $RC" >> "$LOG"
++exit "$RC"
+diff -ruN '--exclude=__pycache__' a/portmaster/README_V3.2_BUILD.txt b/portmaster/README_V3.2_BUILD.txt
+--- a/portmaster/README_V3.2_BUILD.txt	1970-01-01 00:00:00.000000000 +0000
++++ b/portmaster/README_V3.2_BUILD.txt	2026-10-09 15:39:27.585503438 +0000
+@@ -0,0 +1,21 @@
++EKA2L1 PortMaster v3.2 / BUILD STATUS
++
++Это ИСХОДНЫЙ КОД, а не готовый бинарник v3.2.
++На H700 v3.1 уже был успешно собран ранее, но файловый менеджер v3.2 требует
++НОВОЙ компиляции, как минимум целевого target eka2l1_portmaster.
++
++Нужно восстановить submodules, затем собрать через нашу прежнюю CI конфигурацию
++с H700 Sysroot/GCC11, CMake -DEKA2L1_PORTMASTER=ON.
++
++Новые файлы:
++src/emu/portmaster/src/file_browser.cpp
++src/emu/portmaster/src/font10x14_data.inc
++src/emu/portmaster/src/install.cpp
++src/emu/portmaster/include/portmaster/file_browser.h
++src/emu/portmaster/include/portmaster/install.h
++
++Launcher после сборки:
++ports/EKA2L1.sh      (см. portmaster/PortMasterLauncher.sh)
++ports/EKA2L1/        (binary, libs, firmware/, games/, data/)
++
++Для проверки запуска и установки требуются реальные файлы прошивки пользователя.
+diff -ruN '--exclude=__pycache__' a/portmaster/README_V3.2_RU.txt b/portmaster/README_V3.2_RU.txt
+--- a/portmaster/README_V3.2_RU.txt	1970-01-01 00:00:00.000000000 +0000
++++ b/portmaster/README_V3.2_RU.txt	2026-10-09 15:36:32.863970761 +0000
+@@ -0,0 +1,34 @@
++EKA2L1 PortMaster v3.2 — ARM64/H700
++
++Содержимое каталога:
++  firmware/  — ROM/RPKG/VPL/7z/zip вашей прошивки Symbian
++  games/     — SIS/SISX игры
++  data/      — установленная прошивка и виртуальные диски EKA2L1
++  config/    — конфигурация
++  EKA2L1.log — журнал запуска и ошибок
++
++Запуск через /ports/EKA2L1.sh открывает SDL2-меню управления.
++Управление: D-Pad или левый стик вверх/вниз, A — выбрать, B — назад.
++Файловый менеджер ограничен соответствующими папками firmware/games,
++поддерживает подпапки и русские имена файлов.
++
++Выберите Install phone OS / firmware для установки OS телефона.
++Выберите Install SIS / SISX game для установки игры.
++OS нужна ДО установки SIS/SISX. После операции меню можно запустить вновь.
++Результат виден в меню в строке LAST и в EKA2L1.log.
++
++Дополнительные режимы CLI (из папки EKA2L1):
++  ./eka2l1_portmaster --menu
++  ./eka2l1_portmaster --install-firmware firmware/phone.rom
++  ./eka2l1_portmaster --install-game games/game.sis
++  ./eka2l1_portmaster --list-apps
++  ./eka2l1_portmaster --uid 0x12345678
++  ./eka2l1_portmaster --probe
++
++Автозапуск заданного UID вместо меню через лаунчер:
++  EKA2L1_START_MODE=uid  (UID из EKA2L1/game_uid.txt)
++
++VPL с несколькими вариантами: текущий CLI устанавливает ПЕРВЫЙ вариант,
++выбор варианта в графическом меню ещё не реализован.
++
++ВНИМАНИЕ: ни ОС Symbian, ни коммерческие игры в архив не включены.
+diff -ruN '--exclude=__pycache__' a/portmaster/firmware/README_RU.txt b/portmaster/firmware/README_RU.txt
+--- a/portmaster/firmware/README_RU.txt	1970-01-01 00:00:00.000000000 +0000
++++ b/portmaster/firmware/README_RU.txt	2026-10-09 15:36:32.860916625 +0000
+@@ -0,0 +1,11 @@
++EKA2L1 / firmware
++
++Поместите сюда собственный дамп Symbian телефона:
++- .ROM — файл прошивки (некоторым прошивкам нужен соответствующий .RPKG)
++- .RPKG — пакет системных файлов рядом с подходящим .ROM
++- .VPL — Nokia firmware manifest (остальные файлы прошивки рядом)
++- .7Z / .ZIP — поддерживаемый архив дампа устройства
++
++Через меню EKA2L1: Install phone OS / firmware -> выберите файл.
++Наличие ROM-файла не гарантирует поддержку модели телефона.
++Не переименовывайте содержимое прошивки произвольно.
+diff -ruN '--exclude=__pycache__' a/portmaster/games/README_RU.txt b/portmaster/games/README_RU.txt
+--- a/portmaster/games/README_RU.txt	1970-01-01 00:00:00.000000000 +0000
++++ b/portmaster/games/README_RU.txt	2026-10-09 15:36:32.861990838 +0000
+@@ -0,0 +1,6 @@
++EKA2L1 / games
++
++Скопируйте сюда собственные игры Symbian (.SIS или .SISX).
++Перед установкой игры установите совместимую прошивку телефона из firmware/.
++Через меню EKA2L1: Install SIS / SISX game -> выберите файл.
++Простая копия файлов в games/ игру НЕ устанавливает: нажмите A в меню.
+diff -ruN '--exclude=__pycache__' a/src/emu/portmaster/CMakeLists.txt b/src/emu/portmaster/CMakeLists.txt
+--- a/src/emu/portmaster/CMakeLists.txt	2026-10-09 05:21:36.000000000 +0000
++++ b/src/emu/portmaster/CMakeLists.txt	2026-10-09 15:40:17.822289828 +0000
+@@ -1,9 +1,13 @@
+ cmake_minimum_required(VERSION 3.8)
+ 
+ add_executable(eka2l1_portmaster
++    include/portmaster/file_browser.h
++    include/portmaster/install.h
+     include/portmaster/diagnostics.h
+     include/portmaster/emu_window_sdl2.h
+     include/portmaster/state.h
++    src/file_browser.cpp
++    src/install.cpp
+     src/diagnostics.cpp
+     src/emu_window_sdl2.cpp
+     src/main.cpp
+@@ -56,6 +60,8 @@
+ add_custom_command(TARGET eka2l1_portmaster POST_BUILD
+     COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:eka2l1_portmaster>/resources"
+     COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:eka2l1_portmaster>/resources/upscale"
++    COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:eka2l1_portmaster>/firmware"
++    COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:eka2l1_portmaster>/games"
+     COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:eka2l1_portmaster>/compat"
+     COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:eka2l1_portmaster>/patch"
+     COMMAND ${CMAKE_COMMAND} -E copy_directory
+@@ -71,6 +77,12 @@
+             "${CMAKE_BINARY_DIR}/bin/patch"
+             "$<TARGET_FILE_DIR:eka2l1_portmaster>/patch"
+     COMMAND ${CMAKE_COMMAND} -E copy_if_different
++            "${PROJECT_SOURCE_DIR}/portmaster/firmware/README_RU.txt"
++            "$<TARGET_FILE_DIR:eka2l1_portmaster>/firmware/README_RU.txt"
++    COMMAND ${CMAKE_COMMAND} -E copy_if_different
++            "${PROJECT_SOURCE_DIR}/portmaster/games/README_RU.txt"
++            "$<TARGET_FILE_DIR:eka2l1_portmaster>/games/README_RU.txt"
++    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+             "${PROJECT_SOURCE_DIR}/src/emu/drivers/resources/defaultbank.hsb"
+             "$<TARGET_FILE_DIR:eka2l1_portmaster>/resources/defaultbank.hsb"
+     COMMAND ${CMAKE_COMMAND} -E copy_if_different
+diff -ruN '--exclude=__pycache__' a/src/emu/portmaster/include/portmaster/file_browser.h b/src/emu/portmaster/include/portmaster/file_browser.h
+--- a/src/emu/portmaster/include/portmaster/file_browser.h	1970-01-01 00:00:00.000000000 +0000
++++ b/src/emu/portmaster/include/portmaster/file_browser.h	2026-10-09 15:30:33.753461915 +0000
+@@ -0,0 +1,13 @@
++// SPDX-License-Identifier: GPL-3.0-or-later
++#pragma once
++#include <filesystem>
++namespace eka2l1::portmaster {
++    enum class menu_action { quit, install_firmware, install_game, list_apps, probe };
++    struct menu_selection {
++        menu_action action = menu_action::quit;
++        std::filesystem::path path;
++    };
++    // Self-contained SDL2 browser. Operates without installed Symbian firmware.
++    // On input/video failure returns quit and logs the SDL error to stderr.
++    menu_selection open_portmaster_menu(const std::filesystem::path &game_root);
++}
+diff -ruN '--exclude=__pycache__' a/src/emu/portmaster/include/portmaster/install.h b/src/emu/portmaster/include/portmaster/install.h
+--- a/src/emu/portmaster/include/portmaster/install.h	1970-01-01 00:00:00.000000000 +0000
++++ b/src/emu/portmaster/include/portmaster/install.h	2026-10-09 15:32:41.562103337 +0000
+@@ -0,0 +1,8 @@
++// SPDX-License-Identifier: GPL-3.0-or-later
++#pragma once
++#include <filesystem>
++namespace eka2l1::portmaster {
++    // These routines reuse EKA2L1's core installers, not raw file copying.
++    bool install_device_from_file(const std::filesystem::path &file);
++    bool install_sis_from_file(const std::filesystem::path &file);
++}
+diff -ruN '--exclude=__pycache__' a/src/emu/portmaster/resources/DEJAVU_GLYPHS_LICENSE.txt b/src/emu/portmaster/resources/DEJAVU_GLYPHS_LICENSE.txt
+--- a/src/emu/portmaster/resources/DEJAVU_GLYPHS_LICENSE.txt	1970-01-01 00:00:00.000000000 +0000
++++ b/src/emu/portmaster/resources/DEJAVU_GLYPHS_LICENSE.txt	2026-10-09 15:37:30.016916590 +0000
+@@ -0,0 +1,78 @@
++Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
++Upstream-Name: DejaVu fonts
++Upstream-Author: Stepan Roh <src@users.sourceforge.net> (original author),
++                  see /usr/share/doc/fonts-dejavu-core/AUTHORS for full list
++Source: https://dejavu-fonts.github.io/
++
++Files: *
++Copyright: Copyright (c) 2003 by Bitstream, Inc. All Rights Reserved. 
++ Bitstream Vera is a trademark of Bitstream, Inc.
++ DejaVu changes are in public domain.
++License: bitstream-vera
++ Permission is hereby granted, free of charge, to any person obtaining a copy
++ of the fonts accompanying this license ("Fonts") and associated
++ documentation files (the "Font Software"), to reproduce and distribute the
++ Font Software, including without limitation the rights to use, copy, merge,
++ publish, distribute, and/or sell copies of the Font Software, and to permit
++ persons to whom the Font Software is furnished to do so, subject to the
++ following conditions:
++ .
++ The above copyright and trademark notices and this permission notice shall
++ be included in all copies of one or more of the Font Software typefaces.
++ .
++ The Font Software may be modified, altered, or added to, and in particular
++ the designs of glyphs or characters in the Fonts may be modified and
++ additional glyphs or characters may be added to the Fonts, only if the fonts
++ are renamed to names not containing either the words "Bitstream" or the word
++ "Vera".
++ .
++ This License becomes null and void to the extent applicable to Fonts or Font
++ Software that has been modified and is distributed under the "Bitstream
++ Vera" names.
++ .
++ The Font Software may be sold as part of a larger software package but no
++ copy of one or more of the Font Software typefaces may be sold by itself.
++ .
++ THE FONT SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
++ OR IMPLIED, INCLUDING BUT NOT LIMITED TO ANY WARRANTIES OF MERCHANTABILITY,
++ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT OF COPYRIGHT, PATENT,
++ TRADEMARK, OR OTHER RIGHT. IN NO EVENT SHALL BITSTREAM OR THE GNOME
++ FOUNDATION BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, INCLUDING
++ ANY GENERAL, SPECIAL, INDIRECT, INCIDENTAL, OR CONSEQUENTIAL DAMAGES,
++ WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF
++ THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM OTHER DEALINGS IN THE
++ FONT SOFTWARE.
++ .
++ Except as contained in this notice, the names of Gnome, the Gnome
++ Foundation, and Bitstream Inc., shall not be used in advertising or
++ otherwise to promote the sale, use or other dealings in this Font Software
++ without prior written authorization from the Gnome Foundation or Bitstream
++ Inc., respectively. For further information, contact: fonts at gnome dot
++ org.
++
++Files: debian/*
++Copyright: (C) 2005-2006 Peter Cernak <pce@users.sourceforge.net> 
++           (C) 2006-2011 Davide Viti <zinosat@tiscali.it>
++           (C) 2011-2013 Christian Perrier <bubulle@debian.org>
++           (C) 2013 Fabian Greffrath <fabian+debian@greffrath.com>
++License: GPL-2+
++ This program is free software; you can redistribute it
++ and/or modify it under the terms of the GNU General Public
++ License as published by the Free Software Foundation; either
++ version 2 of the License, or (at your option) any later
++ version.
++ .
++ This program is distributed in the hope that it will be
++ useful, but WITHOUT ANY WARRANTY; without even the implied
++ warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
++ PURPOSE.  See the GNU General Public License for more
++ details.
++ .
++ You should have received a copy of the GNU General Public
++ License along with this package; if not, write to the Free
++ Software Foundation, Inc., 51 Franklin St, Fifth Floor,
++ Boston, MA  02110-1301 USA
++ .
++ On Debian systems, the full text of the GNU General Public
++ License version 2 can be found in the file
++ /usr/share/common-licenses/GPL-2'.
+diff -ruN '--exclude=__pycache__' a/src/emu/portmaster/src/file_browser.cpp b/src/emu/portmaster/src/file_browser.cpp
+--- a/src/emu/portmaster/src/file_browser.cpp	1970-01-01 00:00:00.000000000 +0000
++++ b/src/emu/portmaster/src/file_browser.cpp	2026-10-09 15:40:17.822142268 +0000
+@@ -0,0 +1,343 @@
++// Copyright (c) 2026 EKA2L1 PortMaster contributors.
++// SPDX-License-Identifier: GPL-3.0-or-later
++#include <portmaster/file_browser.h>
++#include <SDL.h>
++
++#include <algorithm>
++#include <array>
++#include <cctype>
++#include <cstdint>
++#include <filesystem>
++#include <fstream>
++#include <iostream>
++#include <string>
++#include <vector>
++
++namespace eka2l1::portmaster {
++namespace {
++namespace fs = std::filesystem;
++#include "font10x14_data.inc"
++
++struct entry { fs::path path; bool directory = false; };
++
++std::string lower(std::string s) {
++    std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
++    return s;
++}
++
++bool supported(const fs::path &path, bool firmware) {
++    const std::string ext = lower(path.extension().string());
++    return firmware ? (ext == ".rom" || ext == ".rpkg" || ext == ".vpl" || ext == ".7z" || ext == ".zip")
++                    : (ext == ".sis" || ext == ".sisx");
++}
++
++// Do not browse into symlinks escaping the managed firmware/games directory.
++bool within(const fs::path &candidate, const fs::path &base) {
++    std::error_code ec;
++    const fs::path absolute_candidate = fs::weakly_canonical(candidate, ec);
++    if (ec) return false;
++    const fs::path absolute_base = fs::weakly_canonical(base, ec);
++    if (ec) return false;
++    auto a = absolute_candidate.begin(), b = absolute_base.begin();
++    for (; b != absolute_base.end(); ++a, ++b) {
++        if (a == absolute_candidate.end() || *a != *b) return false;
++    }
++    return true;
++}
++
++std::vector<entry> scan(const fs::path &folder, const fs::path &root, bool firmware) {
++    std::vector<entry> result;
++    std::error_code ec;
++    for (fs::directory_iterator it(folder, fs::directory_options::skip_permission_denied, ec), end; !ec && it != end; it.increment(ec)) {
++        const auto &item = *it;
++        if (!within(item.path(), root)) continue;
++        std::error_code status_ec;
++        const bool dir = item.is_directory(status_ec);
++        if (status_ec) continue;
++        if (dir || (item.is_regular_file(status_ec) && !status_ec && supported(item.path(), firmware))) {
++            result.push_back({item.path(), dir});
++            // Keep file browsing bounded on handhelds with only 1 GB RAM.
++            if (result.size() >= 4096) {
++                std::cerr << "[BROWSER] Directory listing truncated to 4096 entries\n";
++                break;
++            }
++        }
++    }
++    if (ec) std::cerr << "[BROWSER] Failed to scan " << folder << ": " << ec.message() << '\n';
++    std::sort(result.begin(), result.end(), [](const entry &a, const entry &b) {
++        if (a.directory != b.directory) return a.directory;
++        return lower(a.path.filename().string()) < lower(b.path.filename().string());
++    });
++    return result;
++}
++
++int glyph_index(char32_t unicode) {
++    if (unicode >= 32 && unicode <= 126) return int(unicode) - 32;
++    if (unicode >= 0x410 && unicode <= 0x44F) return 95 + int(unicode) - 0x410;
++    if (unicode == 0x401) return 159;
++    if (unicode == 0x451) return 160;
++    return '?' - 32;
++}
++
++std::uint32_t next_codepoint(const std::string &s, std::size_t &position) {
++    const unsigned char c = static_cast<unsigned char>(s[position++]);
++    if (c < 0x80) return c;
++    int continuation_count = 0;
++    std::uint32_t code = 0;
++    if ((c & 0xe0) == 0xc0) { continuation_count = 1; code = c & 0x1f; }
++    else if ((c & 0xf0) == 0xe0) { continuation_count = 2; code = c & 0x0f; }
++    else if ((c & 0xf8) == 0xf0) { continuation_count = 3; code = c & 0x07; }
++    else return '?';
++    for (int n = 0; n < continuation_count; ++n) {
++        if (position >= s.size()) return '?';
++        const unsigned char d = static_cast<unsigned char>(s[position]);
++        if ((d & 0xc0) != 0x80) return '?';
++        ++position;
++        code = (code << 6) | (d & 0x3f);
++    }
++    return code;
++}
++
++void draw_text(SDL_Renderer *renderer, int x, int y, const std::string &s, SDL_Color color, int max_width = 605) {
++    SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b, 255);
++    int xpos = x;
++    for (std::size_t i = 0; i < s.size();) {
++        const auto point = next_codepoint(s, i);
++        if (point == '\n') { xpos = x; y += 17; continue; }
++        if (xpos + 11 > max_width) break;
++        const auto &glyph = kGlyphs[glyph_index(point)];
++        for (int row = 0; row < 14; ++row) {
++            const auto pixels = glyph[row];
++            for (int col = 0; col < 10; ++col) {
++                if (pixels & (1 << (9 - col))) {
++                    SDL_RenderDrawPoint(renderer, xpos + col, y + row);
++                }
++            }
++        }
++        xpos += 11;
++    }
++}
++
++void rect(SDL_Renderer *renderer, int x, int y, int w, int h, SDL_Color color) {
++    SDL_Rect r{x, y, w, h};
++    SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b, color.a);
++    SDL_RenderFillRect(renderer, &r);
++}
++
++std::string trim_ends(const std::string &s, std::size_t maxbytes) {
++    if (s.size() <= maxbytes) return s;
++    // Byte clipping is visual-only. Never truncate actual filesystem paths.
++    std::size_t start = s.size() - maxbytes;
++    while (start < s.size() && (static_cast<unsigned char>(s[start]) & 0xc0) == 0x80) ++start;
++    return "..." + s.substr(start);
++}
++
++bool action_up(const SDL_Event &e) {
++    return (e.type == SDL_KEYDOWN && (e.key.keysym.sym == SDLK_UP || e.key.keysym.sym == SDLK_w)) ||
++           (e.type == SDL_CONTROLLERBUTTONDOWN && e.cbutton.button == SDL_CONTROLLER_BUTTON_DPAD_UP);
++}
++bool action_down(const SDL_Event &e) {
++    return (e.type == SDL_KEYDOWN && (e.key.keysym.sym == SDLK_DOWN || e.key.keysym.sym == SDLK_s)) ||
++           (e.type == SDL_CONTROLLERBUTTONDOWN && e.cbutton.button == SDL_CONTROLLER_BUTTON_DPAD_DOWN);
++}
++bool action_accept(const SDL_Event &e) {
++    return (e.type == SDL_KEYDOWN && (e.key.keysym.sym == SDLK_RETURN || e.key.keysym.sym == SDLK_SPACE)) ||
++           (e.type == SDL_CONTROLLERBUTTONDOWN && e.cbutton.button == SDL_CONTROLLER_BUTTON_A);
++}
++bool action_back(const SDL_Event &e) {
++    return (e.type == SDL_KEYDOWN && (e.key.keysym.sym == SDLK_ESCAPE || e.key.keysym.sym == SDLK_BACKSPACE)) ||
++           (e.type == SDL_CONTROLLERBUTTONDOWN && (e.cbutton.button == SDL_CONTROLLER_BUTTON_B || e.cbutton.button == SDL_CONTROLLER_BUTTON_GUIDE));
++}
++
++class menu {
++    SDL_Window *window_ = nullptr;
++    SDL_Renderer *renderer_ = nullptr;
++    SDL_GameController *pad_ = nullptr;
++    fs::path root_;
++    fs::path folder_;
++    std::vector<entry> files_;
++    std::size_t index_ = 0;
++    int main_index_ = 0;
++    bool browsing_ = false;
++    bool browse_firmware_ = true;
++    bool analog_up_ = false;
++    bool analog_down_ = false;
++    bool dirty_ = true;
++    std::string last_status_;
++
++    void set_browse(bool firmware) {
++        browse_firmware_ = firmware;
++        root_ = fs::weakly_canonical(fs::path(firmware ? "firmware" : "games"));
++        folder_ = root_;
++        refresh();
++        browsing_ = true;
++    }
++    void refresh() {
++        files_ = scan(folder_, root_, browse_firmware_);
++        index_ = 0;
++        dirty_ = true;
++    }
++    void up() {
++        const int size = browsing_ ? static_cast<int>(files_.size()) : 5;
++        if (size == 0) return;
++        if (browsing_) index_ = (index_ + files_.size() - 1) % files_.size();
++        else main_index_ = (main_index_ + size - 1) % size;
++        dirty_ = true;
++    }
++    void down() {
++        const int size = browsing_ ? static_cast<int>(files_.size()) : 5;
++        if (size == 0) return;
++        if (browsing_) index_ = (index_ + 1) % files_.size();
++        else main_index_ = (main_index_ + 1) % size;
++        dirty_ = true;
++    }
++    void back() {
++        if (!browsing_) return;
++        if (folder_ == root_) { browsing_ = false; dirty_ = true; return; }
++        folder_ = folder_.parent_path();
++        if (!within(folder_, root_)) folder_ = root_;
++        refresh();
++    }
++    menu_selection accept() {
++        if (!browsing_) {
++            switch (main_index_) {
++            case 0: set_browse(true); return {};
++            case 1: set_browse(false); return {};
++            case 2: return {menu_action::list_apps, {}};
++            case 3: return {menu_action::probe, {}};
++            default: return {menu_action::quit, {}};
++            }
++        }
++        if (files_.empty()) return {};
++        const entry &selected = files_[index_];
++        if (selected.directory) {
++            folder_ = selected.path;
++            refresh();
++            return {};
++        }
++        return {browse_firmware_ ? menu_action::install_firmware : menu_action::install_game, selected.path};
++    }
++    void draw() {
++        SDL_SetRenderDrawColor(renderer_, 17, 22, 35, 255);
++        SDL_RenderClear(renderer_);
++        rect(renderer_, 0, 0, 640, 48, {40, 89, 132, 255});
++        draw_text(renderer_, 20, 16, "EKA2L1  /  PORTMASTER H700", {255, 255, 255, 255});
++        const SDL_Color regular{210, 223, 234, 255}, highlight{255, 255, 255, 255};
++        if (!browsing_) {
++            draw_text(renderer_, 22, 66, "DEVICE / PACKAGE MANAGEMENT", regular);
++            const char *options[] = {
++                "Install phone OS / firmware",
++                "Install SIS / SISX game",
++                "List apps -> EKA2L1.log",
++                "Test Mali GLES / controller",
++                "Exit"
++            };
++            for (int i = 0; i < 5; ++i) {
++                const int y = 102 + i * 43;
++                if (i == main_index_) rect(renderer_, 16, y - 5, 608, 31, {54, 111, 163, 255});
++                draw_text(renderer_, 30, y, options[i], i == main_index_ ? highlight : regular);
++            }
++            draw_text(renderer_, 20, 344, "Firmware: /EKA2L1/firmware/", {170, 206, 223, 255});
++            draw_text(renderer_, 20, 363, "Games:    /EKA2L1/games/", {170, 206, 223, 255});
++            if (!last_status_.empty()) {
++                draw_text(renderer_, 20, 401, "LAST: " + trim_ends(last_status_, 45), {232, 194, 121, 255});
++            }
++        } else {
++            draw_text(renderer_, 20, 60, browse_firmware_ ? "FIRMWARE (.ROM .RPKG .VPL .7Z .ZIP)" : "GAMES (.SIS .SISX)", regular);
++            const std::string dir = folder_.lexically_relative(root_).generic_string();
++            draw_text(renderer_, 20, 82, "Folder: " + trim_ends(dir.empty() || dir == "." ? "/" : dir, 47), {170, 206, 223, 255});
++            if (files_.empty()) draw_text(renderer_, 24, 150, "No supported files here. Press B to go back.", regular);
++            const std::size_t first = index_ > 11 ? index_ - 11 : 0;
++            for (std::size_t j = first; j < files_.size() && j < first + 12; ++j) {
++                const int y = 114 + static_cast<int>(j - first) * 25;
++                if (j == index_) rect(renderer_, 13, y - 2, 614, 23, {54, 111, 163, 255});
++                const std::string name = (files_[j].directory ? "[DIR] " : "      ") + files_[j].path.filename().string();
++                draw_text(renderer_, 22, y + 1, trim_ends(name, 50), j == index_ ? highlight : regular);
++            }
++            draw_text(renderer_, 20, 429, std::to_string(files_.size()) + " items", {170, 206, 223, 255});
++        }
++        rect(renderer_, 0, 451, 640, 29, {27, 39, 60, 255});
++        draw_text(renderer_, 19, 458, browsing_ ? "D-PAD / STICK: choose   A: open/install   B: back"
++                                             : "D-PAD / STICK: choose   A: select   B: exit", regular);
++        SDL_RenderPresent(renderer_);
++    }
++
++public:
++    explicit menu(fs::path root) : root_(std::move(root)) {
++        std::ifstream status(root_ / "install_status.txt");
++        if (status) std::getline(status, last_status_);
++    }
++    ~menu() {
++        if (pad_) SDL_GameControllerClose(pad_);
++        if (renderer_) SDL_DestroyRenderer(renderer_);
++        if (window_) SDL_DestroyWindow(window_);
++        SDL_Quit();
++    }
++    menu_selection run() {
++        SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "0");
++        if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER | SDL_INIT_JOYSTICK) != 0) {
++            std::cerr << "[BROWSER] SDL_Init failed: " << SDL_GetError() << '\n';
++            return {};
++        }
++        // H700-specific mapping has priority over SDL's generic database.
++        SDL_GameControllerAddMappingsFromFile("resources/gamecontrollerdb.txt");
++        SDL_GameControllerAddMappingsFromFile("resources/gamecontrollerdb-h700.txt");
++        for (int i = 0; i < SDL_NumJoysticks(); ++i) {
++            if (SDL_IsGameController(i)) { pad_ = SDL_GameControllerOpen(i); if (pad_) break; }
++        }
++        // Avoid desktop GLX/GL4ES on H700. SDL's GLES2 renderer is sufficient
++        // for the file browser and is separate from the emulation GLES3 driver.
++        SDL_SetHint(SDL_HINT_RENDER_DRIVER, "opengles2");
++        SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
++        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
++        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
++        window_ = SDL_CreateWindow("EKA2L1 PortMaster", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
++                                   640, 480, SDL_WINDOW_SHOWN | SDL_WINDOW_FULLSCREEN_DESKTOP);
++        if (!window_) window_ = SDL_CreateWindow("EKA2L1 PortMaster", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
++                                                 640, 480, SDL_WINDOW_SHOWN);
++        if (!window_) { std::cerr << "[BROWSER] Window error: " << SDL_GetError() << '\n'; return {}; }
++        renderer_ = SDL_CreateRenderer(window_, -1, SDL_RENDERER_PRESENTVSYNC);
++        if (!renderer_) {
++            std::cerr << "[BROWSER] GLES2 renderer unavailable: " << SDL_GetError() << "; trying software\n";
++            SDL_SetHint(SDL_HINT_RENDER_DRIVER, "software");
++            renderer_ = SDL_CreateRenderer(window_, -1, SDL_RENDERER_SOFTWARE);
++        }
++        if (!renderer_) { std::cerr << "[BROWSER] Renderer error: " << SDL_GetError() << '\n'; return {}; }
++        SDL_RenderSetLogicalSize(renderer_, 640, 480);
++        SDL_ShowCursor(SDL_DISABLE);
++        while (true) {
++            if (dirty_) { draw(); dirty_ = false; }
++            SDL_Event e{};
++            if (SDL_WaitEventTimeout(&e, 60) == 0) continue;
++            if (e.type == SDL_QUIT) return {};
++            if (e.type == SDL_CONTROLLERDEVICEADDED && !pad_ && SDL_IsGameController(e.cdevice.which)) {
++                pad_ = SDL_GameControllerOpen(e.cdevice.which);
++            }
++            if (e.type == SDL_CONTROLLERDEVICEREMOVED && pad_ &&
++                SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(pad_)) == e.cdevice.which) {
++                SDL_GameControllerClose(pad_); pad_ = nullptr;
++            }
++            if (e.type == SDL_CONTROLLERAXISMOTION && e.caxis.axis == SDL_CONTROLLER_AXIS_LEFTY) {
++                if (e.caxis.value < -18000 && !analog_up_) { analog_up_ = true; up(); }
++                else if (e.caxis.value > -9000) analog_up_ = false;
++                if (e.caxis.value > 18000 && !analog_down_) { analog_down_ = true; down(); }
++                else if (e.caxis.value < 9000) analog_down_ = false;
++            }
++            if (action_up(e)) up();
++            else if (action_down(e)) down();
++            else if (action_accept(e)) {
++                const auto selected = accept();
++                if (selected.action != menu_action::quit || (selected.action == menu_action::quit && !browsing_ && main_index_ == 4)) return selected;
++            }
++            else if (action_back(e)) {
++                if (!browsing_) return {};
++                back();
++            }
++        }
++    }
++};
++}
++menu_selection open_portmaster_menu(const std::filesystem::path &game_root) {
++    return menu(game_root).run();
++}
++}
+diff -ruN '--exclude=__pycache__' a/src/emu/portmaster/src/font10x14_data.inc b/src/emu/portmaster/src/font10x14_data.inc
+--- a/src/emu/portmaster/src/font10x14_data.inc	1970-01-01 00:00:00.000000000 +0000
++++ b/src/emu/portmaster/src/font10x14_data.inc	2026-10-09 15:30:33.774401687 +0000
+@@ -0,0 +1,165 @@
++// Embedded bitmap glyph data for display-independent menu rendering.
++// 95 ASCII glyphs (U+0020..U+007E), 64 Cyrillic glyphs (U+0410..U+044F), Yo/yo.
++static constexpr std::uint16_t kGlyphs[][14] = {
++{0,0,0,0,0,0,0,0,0,0,0,0,0,0},
++{0,128,128,128,128,128,128,0,128,128,0,0,0,0},
++{0,320,320,320,0,0,0,0,0,0,0,0,0,0},
++{0,0,160,288,1008,320,320,992,576,640,0,0,0,0},
++{0,128,448,672,640,896,224,160,672,448,128,128,0,0},
++{0,768,128,128,800,192,864,144,144,96,0,0,0,0},
++{0,224,256,256,384,384,592,624,800,464,0,0,0,0},
++{0,128,128,128,0,0,0,0,0,0,0,0,0,0},
++{96,64,64,128,128,128,128,128,64,64,96,0,0,0},
++{384,128,128,64,64,64,64,64,128,128,384,0,0,0},
++{0,128,672,448,448,672,128,0,0,0,0,0,0,0},
++{0,0,0,128,128,128,1008,128,128,128,0,0,0,0},
++{0,0,0,0,0,0,0,0,128,128,256,0,0,0},
++{0,0,0,0,0,0,448,0,0,0,0,0,0,0},
++{0,0,0,0,0,0,0,0,128,128,0,0,0,0},
++{0,16,32,32,64,64,128,128,256,256,512,0,0,0},
++{0,480,288,528,528,592,528,528,288,480,0,0,0,0},
++{0,896,128,128,128,128,128,128,128,992,0,0,0,0},
++{0,480,528,16,16,32,64,128,256,1008,0,0,0,0},
++{0,480,528,16,16,224,16,16,528,480,0,0,0,0},
++{0,96,96,160,416,288,544,1008,32,32,0,0,0,0},
++{0,992,512,512,992,48,16,16,560,480,0,0,0,0},
++{0,224,272,512,736,816,528,528,304,480,0,0,0,0},
++{0,1008,48,32,32,64,64,128,128,256,0,0,0,0},
++{0,480,528,528,528,480,528,528,528,480,0,0,0,0},
++{0,480,800,528,528,560,464,16,544,448,0,0,0,0},
++{0,0,0,0,128,128,0,0,128,128,0,0,0,0},
++{0,0,0,0,128,128,0,0,128,128,256,0,0,0},
++{0,0,0,16,224,768,768,224,16,0,0,0,0,0},
++{0,0,0,0,0,1008,0,1008,0,0,0,0,0,0},
++{0,0,0,512,448,48,48,448,512,0,0,0,0,0},
++{0,224,272,16,96,192,128,0,128,128,0,0,0,0},
++{0,0,224,304,528,624,656,656,624,768,256,224,0,0},
++{0,192,192,192,288,288,288,480,528,528,0,0,0,0},
++{0,992,528,528,528,992,528,528,528,992,0,0,0,0},
++{0,224,272,512,512,512,512,512,272,224,0,0,0,0},
++{0,960,544,528,528,528,528,528,544,960,0,0,0,0},
++{0,1008,512,512,512,1008,512,512,512,1008,0,0,0,0},
++{0,1008,512,512,512,1008,512,512,512,512,0,0,0,0},
++{0,224,272,512,512,560,528,528,272,224,0,0,0,0},
++{0,528,528,528,528,1008,528,528,528,528,0,0,0,0},
++{0,992,128,128,128,128,128,128,128,992,0,0,0,0},
++{0,224,32,32,32,32,32,32,544,448,0,0,0,0},
++{0,528,544,576,640,896,576,608,544,528,0,0,0,0},
++{0,512,512,512,512,512,512,512,512,1008,0,0,0,0},
++{0,528,816,816,720,720,720,528,528,528,0,0,0,0},
++{0,784,784,656,656,720,592,592,560,560,0,0,0,0},
++{0,480,288,528,528,528,528,528,288,480,0,0,0,0},
++{0,992,528,528,528,992,512,512,512,512,0,0,0,0},
++{0,480,288,528,528,528,528,528,304,480,32,32,0,0},
++{0,992,528,528,528,992,544,528,528,520,0,0,0,0},
++{0,480,528,512,768,480,16,16,528,480,0,0,0,0},
++{0,1008,128,128,128,128,128,128,128,128,0,0,0,0},
++{0,528,528,528,528,528,528,528,528,480,0,0,0,0},
++{0,528,528,288,288,288,288,192,192,192,0,0,0,0},
++{0,16,144,144,336,336,336,864,544,544,0,0,0,0},
++{0,528,288,288,192,192,192,288,288,528,0,0,0,0},
++{0,16,544,320,320,128,128,128,128,128,0,0,0,0},
++{0,1008,48,32,64,192,128,256,768,1008,0,0,0,0},
++{192,128,128,128,128,128,128,128,128,128,192,0,0,0},
++{0,512,256,256,128,128,64,64,32,32,16,0,0,0},
++{384,128,128,128,128,128,128,128,128,128,384,0,0,0},
++{0,384,576,32,0,0,0,0,0,0,0,0,0,0},
++{0,0,0,0,0,0,0,0,0,0,0,0,1008,0},
++{128,64,0,0,0,0,0,0,0,0,0,0,0,0},
++{0,0,0,448,544,32,480,544,544,480,0,0,0,0},
++{512,512,512,960,544,544,544,544,544,960,0,0,0,0},
++{0,0,0,448,800,512,512,512,768,480,0,0,0,0},
++{32,32,32,480,544,544,544,544,544,480,0,0,0,0},
++{0,0,0,448,800,544,992,512,544,448,0,0,0,0},
++{96,128,128,992,128,128,128,128,128,128,0,0,0,0},
++{0,0,0,480,544,544,544,544,544,480,32,288,192,0},
++{512,512,512,704,800,544,544,544,544,544,0,0,0,0},
++{128,0,0,896,128,128,128,128,128,992,0,0,0,0},
++{64,0,0,448,64,64,64,64,64,64,64,64,384,0},
++{512,512,512,544,576,640,768,640,576,544,0,0,0,0},
++{896,128,128,128,128,128,128,128,128,96,0,0,0,0},
++{0,0,0,992,672,672,672,672,672,672,0,0,0,0},
++{0,0,0,704,800,544,544,544,544,544,0,0,0,0},
++{0,0,0,448,544,544,544,544,544,448,0,0,0,0},
++{0,0,0,960,544,544,544,544,544,960,512,512,512,0},
++{0,0,0,480,544,544,544,544,544,480,32,32,32,0},
++{0,0,0,480,400,256,256,256,256,256,0,0,0,0},
++{0,0,0,448,544,512,448,32,544,448,0,0,0,0},
++{0,128,128,992,128,128,128,128,128,224,0,0,0,0},
++{0,0,0,544,544,544,544,544,544,480,0,0,0,0},
++{0,0,0,544,544,320,320,320,128,128,0,0,0,0},
++{0,0,0,16,16,672,672,864,320,320,0,0,0,0},
++{0,0,0,544,320,320,128,320,320,544,0,0,0,0},
++{0,0,0,544,544,320,320,320,384,128,128,256,768,0},
++{0,0,0,992,32,64,128,256,512,992,0,0,0,0},
++{224,128,128,128,128,768,128,128,128,128,224,0,0,0},
++{128,128,128,128,128,128,128,128,128,128,128,128,0,0},
++{896,128,128,128,128,96,128,128,128,128,896,0,0,0},
++{0,0,0,0,0,896,112,0,0,0,0,0,0,0},
++{0,192,192,192,288,288,288,480,528,528,0,0,0,0},
++{0,1008,512,512,512,992,528,528,528,992,0,0,0,0},
++{0,992,528,528,528,992,528,528,528,992,0,0,0,0},
++{0,1008,512,512,512,512,512,512,512,512,0,0,0,0},
++{0,992,544,544,544,544,544,544,544,1008,16,16,0,0},
++{0,1008,512,512,512,1008,512,512,512,1008,0,0,0,0},
++{0,688,672,672,448,448,672,672,672,144,0,0,0,0},
++{0,480,528,16,16,224,16,16,528,480,0,0,0,0},
++{0,560,560,592,592,720,656,656,784,784,0,0,0,0},
++{0,560,560,592,592,720,656,656,784,784,0,0,0,0},
++{0,528,544,576,640,896,576,608,544,528,0,0,0,0},
++{0,496,272,272,272,272,272,272,784,528,0,0,0,0},
++{0,528,816,816,720,720,720,528,528,528,0,0,0,0},
++{0,528,528,528,528,1008,528,528,528,528,0,0,0,0},
++{0,480,288,528,528,528,528,528,288,480,0,0,0,0},
++{0,1008,528,528,528,528,528,528,528,528,0,0,0,0},
++{0,992,528,528,528,992,512,512,512,512,0,0,0,0},
++{0,224,272,512,512,512,512,512,272,224,0,0,0,0},
++{0,1008,128,128,128,128,128,128,128,128,0,0,0,0},
++{0,528,800,288,288,320,192,128,128,768,0,0,0,0},
++{0,128,992,688,144,144,144,688,992,128,0,0,0,0},
++{0,528,288,288,192,192,192,288,288,528,0,0,0,0},
++{0,32,32,32,32,32,32,32,32,1008,16,16,0,0},
++{0,528,528,528,528,528,496,16,16,16,0,0,0,0},
++{0,672,672,672,672,672,672,672,672,992,0,0,0,0},
++{0,320,320,320,320,320,320,320,320,992,32,32,0,0},
++{0,768,256,256,480,304,272,272,304,480,0,0,0,0},
++{0,16,16,16,912,208,80,80,208,912,0,0,0,0},
++{0,512,512,512,512,992,528,528,528,992,0,0,0,0},
++{0,448,544,16,16,496,16,16,544,448,0,0,0,0},
++{0,608,656,656,656,912,656,656,656,608,0,0,0,0},
++{0,992,32,32,32,992,544,544,544,32,0,0,0,0},
++{0,0,0,448,544,32,480,544,544,480,0,0,0,0},
++{192,256,512,960,544,544,544,544,544,448,0,0,0,0},
++{0,0,0,960,544,544,960,544,544,960,0,0,0,0},
++{0,0,0,480,256,256,256,256,256,256,0,0,0,0},
++{0,0,0,480,288,288,288,288,288,1008,528,528,0,0},
++{0,0,0,448,800,544,992,512,544,448,0,0,0,0},
++{0,0,0,672,672,448,992,672,672,144,0,0,0,0},
++{0,0,0,448,544,32,448,32,544,448,0,0,0,0},
++{0,0,0,544,608,608,672,672,800,544,0,0,0,0},
++{288,192,0,544,608,608,672,672,800,544,0,0,0,0},
++{0,0,0,544,576,640,768,640,576,544,0,0,0,0},
++{0,0,0,992,544,544,544,544,544,32,0,0,0,0},
++{0,0,0,528,816,816,720,720,528,528,0,0,0,0},
++{0,0,0,544,544,544,992,544,544,544,0,0,0,0},
++{0,0,0,448,544,544,544,544,544,448,0,0,0,0},
++{0,0,0,992,544,544,544,544,544,544,0,0,0,0},
++{0,0,0,960,544,544,544,544,544,960,512,512,512,0},
++{0,0,0,448,800,512,512,512,768,480,0,0,0,0},
++{0,0,0,992,128,128,128,128,128,128,0,0,0,0},
++{0,0,0,544,544,320,320,320,384,128,128,256,768,0},
++{128,128,128,448,672,672,672,672,672,448,128,128,128,0},
++{0,0,0,544,320,320,128,320,320,544,0,0,0,0},
++{0,0,0,544,544,544,544,544,544,1008,16,16,0,0},
++{0,0,0,544,544,544,544,480,32,32,0,0,0,0},
++{0,0,0,672,672,672,672,672,672,992,0,0,0,0},
++{0,0,0,672,672,672,672,672,672,1008,16,16,0,0},
++{0,0,0,512,512,512,992,528,528,992,0,0,0,0},
++{0,0,0,528,528,528,912,592,592,912,0,0,0,0},
++{0,0,0,512,512,512,960,544,544,960,0,0,0,0},
++{0,0,0,448,608,32,480,32,96,960,0,0,0,0},
++{0,0,0,608,656,656,912,656,656,608,0,0,0,0},
++{0,0,0,480,544,544,480,288,288,544,0,0,0,0},
++{0,1008,512,512,512,1008,512,512,512,1008,0,0,0,0},
++{0,320,0,448,800,544,992,512,544,448,0,0,0,0}
++};
+diff -ruN '--exclude=__pycache__' a/src/emu/portmaster/src/install.cpp b/src/emu/portmaster/src/install.cpp
+--- a/src/emu/portmaster/src/install.cpp	1970-01-01 00:00:00.000000000 +0000
++++ b/src/emu/portmaster/src/install.cpp	2026-10-09 15:35:34.111130884 +0000
+@@ -0,0 +1,147 @@
++// Copyright (c) 2026 EKA2L1 PortMaster contributors.
++// SPDX-License-Identifier: GPL-3.0-or-later
++#include <portmaster/install.h>
++#include <portmaster/state.h>
++
++#include <common/cvt.h>
++#include <common/log.h>
++#include <common/path.h>
++#include <system/devices.h>
++#include <system/installation/archive.h>
++#include <system/installation/firmware.h>
++#include <system/installation/rpkg.h>
++#include <package/manager.h>
++
++#include <algorithm>
++#include <cctype>
++#include <filesystem>
++#include <fstream>
++#include <iostream>
++#include <string>
++#include <vector>
++
++namespace eka2l1::portmaster {
++namespace {
++namespace fs = std::filesystem;
++
++std::string lower(std::string value) {
++    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) {
++        return static_cast<char>(std::tolower(c));
++    });
++    return value;
++}
++void status(const std::string &text) {
++    std::cout << "[INSTALL] " << text << '\n';
++    // Kept across menu launches so the user can see installation result on screen.
++    std::ofstream out("install_status.txt", std::ios::trunc);
++    if (out) out << text << '\n';
++}
++fs::path adjacent_rpkg(const fs::path &rom) {
++    std::vector<fs::path> packages;
++    std::error_code ec;
++    for (fs::directory_iterator it(rom.parent_path(), fs::directory_options::skip_permission_denied, ec), end;
++         !ec && it != end; it.increment(ec)) {
++        if (it->is_regular_file(ec) && !ec && lower(it->path().extension().string()) == ".rpkg") {
++            if (lower(it->path().stem().string()) == lower(rom.stem().string())) return it->path();
++            packages.push_back(it->path());
++        }
++    }
++    return packages.size() == 1 ? packages.front() : fs::path{};
++}
++bool regular_file(const fs::path &p) {
++    std::error_code ec;
++    const bool ok = fs::is_regular_file(p, ec);
++    if (!ok || ec) status("Input file missing or unreadable: " + p.string());
++    return ok && !ec;
++}
++}
++
++bool install_device_from_file(const std::filesystem::path &file) {
++    if (!regular_file(file)) return false;
++    // Do not create a full Symbian system: the initial installation is allowed
++    // when no device exists and must be completed before state::stage_one().
++    log::setup_log(nullptr);
++    config::state conf;
++    conf.deserialize();
++    std::error_code ec;
++    fs::create_directories(fs::path(conf.storage) / "roms", ec);
++    fs::create_directories(fs::path(conf.storage) / "drives" / "z", ec);
++    if (ec) { status("Unable to create EKA2L1 data directories: " + ec.message()); return false; }
++    device_manager manager(&conf);
++    const std::string roms = add_path(conf.storage, "roms/");
++    const std::string z = add_path(conf.storage, "drives/z/");
++    const std::string ext = lower(file.extension().string());
++    const std::string source = file.string();
++    const bool isolated = true;
++    device_installation_error error = device_installation_general_failure;
++    if (ext == ".rom") {
++        const fs::path rpkg = adjacent_rpkg(file);+        std::cout << "[INSTALL] ROM=" << source << " RPKG=" << (rpkg.empty() ? "<none>" : rpkg.string()) << '\n';
++        error = loader::install_rom_with_optional_rpkg(&manager, source, rpkg.string(), roms, z,
++                                                       isolated, nullptr, nullptr);
++    } else if (ext == ".rpkg") {
++        // RPKG alone does not include the executable ROM image. Find the ROM
++        // alongside it instead of corrupting an incomplete device record.
++        fs::path candidate = file.parent_path() / (file.stem().string() + ".rom");
++        if (!fs::is_regular_file(candidate)) {
++            std::vector<fs::path> roms_found;
++            for (fs::directory_iterator it(file.parent_path(), ec), end; !ec && it != end; it.increment(ec)) {
++                if (it->is_regular_file(ec) && lower(it->path().extension().string()) == ".rom") roms_found.push_back(it->path());
++            }
++            if (roms_found.size() != 1) {
++                status("RPKG requires a matching .rom in the same directory");
++                return false;
++            }
++            candidate = roms_found[0];
++        }
++        error = loader::install_rom_with_optional_rpkg(&manager, candidate.string(), source, roms, z,
++                                                       isolated, nullptr, nullptr);
++    } else if (ext == ".vpl") {
++        error = install_firmware(&manager, source, conf.storage, roms, isolated,
++            [](const std::vector<std::string> &variants) -> int {
++                if (variants.empty()) return -1;
++                // Minimal frontend: use first variant deterministically.
++                // Future UI can present a variant picker for multi-variant VPL.
++                std::cout << "[INSTALL] VPL variants=" << variants.size() << "; selecting first: " << variants[0] << '\n';
++                return 0;
++            }, nullptr, nullptr);
++    } else if (ext == ".7z" || ext == ".zip") {
++        error = loader::install_archive(&manager, source, roms, z, isolated, nullptr, nullptr);
++    } else {
++        status("Unsupported firmware file: " + file.filename().string());
++        return false;
++    }
++    if (error != device_installation_none) {
++        status("Firmware installation failed, error=" + std::to_string(static_cast<int>(error)));
++        return false;
++    }
++    manager.save_devices();
++    const device *latest = manager.lastest();
++    status(latest ? "Firmware installed: " + latest->model + " (" + latest->firmware_code + ")"
++                  : "Firmware installed successfully");
++    return true;
++}
++
++bool install_sis_from_file(const std::filesystem::path &file) {
++    if (!regular_file(file)) return false;
++    const std::string ext = lower(file.extension().string());
++    if (ext != ".sis" && ext != ".sisx") {
++        status("Unsupported game file. Choose SIS or SISX.");
++        return false;
++    }
++    emulator_state state;
++    if (!state.stage_one() || !state.stage_two()) {
++        status("Install a compatible Symbian firmware before installing SIS/SISX");
++        return false;
++    }
++    // Existing core installer registers apps and copies their files to EKA2L1
++    // virtual drive E. Qt uses the same default drive on this upstream revision.
++    const int result = state.symsys->install_package(common::utf8_to_ucs2(file.string()), drive_e);
++    if (result != static_cast<int>(package::installation_result_success)) {
++        status("SIS/SISX installation failed, error=" + std::to_string(result));
++        return false;
++    }
++    status("Game installed: " + file.filename().string());
++    return true;
++}
++}
+diff -ruN '--exclude=__pycache__' a/src/emu/portmaster/src/main.cpp b/src/emu/portmaster/src/main.cpp
+--- a/src/emu/portmaster/src/main.cpp	2026-10-09 05:21:36.000000000 +0000
++++ b/src/emu/portmaster/src/main.cpp	2026-10-09 15:33:01.592631504 +0000
+@@ -3,6 +3,8 @@
+ 
+ #include <portmaster/state.h>
+ #include <portmaster/diagnostics.h>
++#include <portmaster/file_browser.h>
++#include <portmaster/install.h>
+ 
+ #include <common/log.h>
+ #include <drivers/graphics/graphics.h>
+@@ -24,6 +26,9 @@
+     struct options {
+         std::optional<std::uint32_t> uid;
+         bool list_apps = false;
++        bool menu = false;
++        std::optional<std::string> install_firmware_path;
++        std::optional<std::string> install_game_path;
+         bool probe = false;
+         int probe_seconds = 12;
+         bool help = false;
+@@ -47,6 +52,12 @@
+             const std::string arg = argv[i];
+             if (arg == "--help" || arg == "-h") {
+                 out.help = true;
++            } else if (arg == "--menu") {
++                out.menu = true;
++            } else if (arg == "--install-firmware" && i + 1 < argc) {
++                out.install_firmware_path = argv[++i];
++            } else if (arg == "--install-game" && i + 1 < argc) {
++                out.install_game_path = argv[++i];
+             } else if (arg == "--list-apps") {
+                 out.list_apps = true;
+             } else if (arg == "--probe") {
+@@ -81,6 +92,9 @@
+         std::cout
+             << "EKA2L1 PortMaster frontend\n"
+             << "Usage:\n"
++            << "  eka2l1_portmaster --menu\n"
++            << "  eka2l1_portmaster --install-firmware firmware/phone.rom\n"
++            << "  eka2l1_portmaster --install-game games/game.sis\n"
+             << "  eka2l1_portmaster --uid 0x12345678\n"
+             << "  eka2l1_portmaster --list-apps\n"
+             << "  eka2l1_portmaster --probe [--probe-seconds 12] (no Symbian firmware required)\n"
+@@ -200,6 +214,39 @@
+         std::cerr << "Warning: could not switch to executable directory: " << e.what() << '\n';
+     }
+ 
++    // Persist import directories even if this is the first boot with no OS.
++    // The menu is a standalone SDL frontend, independent of Symbian/Qt.
++    std::error_code directory_error;
++    std::filesystem::create_directories("firmware", directory_error);
++    if (directory_error) std::cerr << "Unable to create firmware/: " << directory_error.message() << '\n';
++    directory_error.clear();
++    std::filesystem::create_directories("games", directory_error);
++    if (directory_error) std::cerr << "Unable to create games/: " << directory_error.message() << '\n';
++
++    if (opt.install_firmware_path) {
++        return portmaster::install_device_from_file(*opt.install_firmware_path) ? 0 : 5;
++    }
++    if (opt.install_game_path) {
++        return portmaster::install_sis_from_file(*opt.install_game_path) ? 0 : 6;
++    }
++
++    if (opt.menu || (!opt.uid && !opt.list_apps && !opt.probe)) {
++        const portmaster::menu_selection selection = portmaster::open_portmaster_menu(std::filesystem::current_path());
++        switch (selection.action) {
++        case portmaster::menu_action::quit: return 0;
++        case portmaster::menu_action::install_firmware:
++            return portmaster::install_device_from_file(selection.path) ? 0 : 5;
++        case portmaster::menu_action::install_game:
++            return portmaster::install_sis_from_file(selection.path) ? 0 : 6;
++        case portmaster::menu_action::list_apps:
++            opt.list_apps = true;
++            break;
++        case portmaster::menu_action::probe:
++            opt.probe = true;
++            break;
++        }
++    }
++
+     // This probe deliberately runs before Symbian initialization. It can help
+     // diagnose Mali EGL and DualStick mapping even with no installed firmware.
+     if (opt.probe) {
