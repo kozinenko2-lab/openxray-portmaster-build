@@ -52,56 +52,6 @@ diff -ruN '--exclude=__pycache__' a/portmaster/AUDIT_V3.2_RU.md b/portmaster/AUD
 +## Фактический результат CMake в локальном окружении
 +
 +`cmake -S . -B cmake-audit -G Ninja -DEKA2L1_PORTMASTER=ON ...` завершился ошибкой конфигурации: не хватает подмодулей `ffmpeg`, `capstone`, `libfat`, `mbedtls`, а также `SDL2Config.cmake`/`sdl2-config.cmake`. Вопросы совместимости этих third-party библиотек с ARM64 нельзя закрыть, пока не восстановлены зависимости в H700 CI. Проверка интерфейсного `file_browser.cpp` отдельно прошла с `g++ -std=c++20 -Wall -Wextra -Werror -fsyntax-only`.
-diff -ruN '--exclude=__pycache__' a/portmaster/EKA2L1.sh b/portmaster/EKA2L1.sh
---- a/portmaster/EKA2L1.sh	2026-10-09 05:22:26.000000000 +0000
-+++ b/portmaster/EKA2L1.sh	2026-10-09 15:38:57.085274414 +0000
-@@ -1,41 +1,12 @@
- #!/bin/sh
--# EKA2L1 PortMaster / H700 launcher
-+# Internal game-folder launcher. Normally start via ../EKA2L1.sh in ports/.
- GAMEDIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
- cd "$GAMEDIR" || exit 1
--
-+mkdir -p firmware games data config cache
- export HOME="$GAMEDIR"
- export XDG_CONFIG_HOME="$GAMEDIR/config"
- export XDG_CACHE_HOME="$GAMEDIR/cache"
- export LD_LIBRARY_PATH="$GAMEDIR/libs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
--mkdir -p "$XDG_CONFIG_HOME" "$XDG_CACHE_HOME"
--
--# Some H700 firmware SDL builds require the vendor fbdev video backend.  Leave
--# autodetection alone by default, but allow the port package/CFW to force it:
--#   EKA2L1_SDL_VIDEODRIVER=mali ./EKA2L1.sh 0x12345678
--if [ -n "${EKA2L1_SDL_VIDEODRIVER:-}" ]; then
--    export SDL_VIDEODRIVER="$EKA2L1_SDL_VIDEODRIVER"
--fi
--
--# Log-only checks also work with the pre-existing v3 runtime binary.
--if [ "${1:-}" = "--diagnose" ]; then
--    echo "Kernel: $(uname -a 2>/dev/null || true)" >> "$GAMEDIR/EKA2L1.log"
--    for node in /dev/fb0 /dev/mali /dev/mali0 /dev/dri/card0 /dev/input/js0; do
--        [ -e "$node" ] && ls -l "$node" >> "$GAMEDIR/EKA2L1.log" 2>&1
--    done
--    [ -r /proc/bus/input/devices ] && cat /proc/bus/input/devices >> "$GAMEDIR/EKA2L1.log"
--    exit 0
--fi
--
--# A standalone preflight path is available before Symbian firmware installation.
--if [ "${1:-}" = "--probe" ]; then
--    shift
--    exec "$GAMEDIR/eka2l1_portmaster" --probe "$@" >> "$GAMEDIR/EKA2L1.log" 2>&1
--fi
--
--UID_ARG="${1:-${EKA2L1_APP_UID:-}}"
--if [ -z "$UID_ARG" ]; then
--    echo "No Symbian app UID supplied. Installed apps:" >> "$GAMEDIR/EKA2L1.log"
--    exec "$GAMEDIR/eka2l1_portmaster" --list-apps >> "$GAMEDIR/EKA2L1.log" 2>&1
--fi
--
--exec "$GAMEDIR/eka2l1_portmaster" --uid "$UID_ARG" >> "$GAMEDIR/EKA2L1.log" 2>&1
-+[ -n "${EKA2L1_SDL_VIDEODRIVER:-}" ] && export SDL_VIDEODRIVER="$EKA2L1_SDL_VIDEODRIVER"
-+if [ "$#" -eq 0 ]; then set -- --menu; fi
-+exec "$GAMEDIR/eka2l1_portmaster" "$@" >> "$GAMEDIR/EKA2L1.log" 2>&1
 diff -ruN '--exclude=__pycache__' a/portmaster/PortMasterLauncher.sh b/portmaster/PortMasterLauncher.sh
 --- a/portmaster/PortMasterLauncher.sh	1970-01-01 00:00:00.000000000 +0000
 +++ b/portmaster/PortMasterLauncher.sh	2026-10-09 15:36:32.853600984 +0000
@@ -997,7 +947,8 @@ diff -ruN '--exclude=__pycache__' a/src/emu/portmaster/src/install.cpp b/src/emu
 +    const bool isolated = true;
 +    device_installation_error error = device_installation_general_failure;
 +    if (ext == ".rom") {
-+        const fs::path rpkg = adjacent_rpkg(file);+        std::cout << "[INSTALL] ROM=" << source << " RPKG=" << (rpkg.empty() ? "<none>" : rpkg.string()) << '\n';
++        const fs::path rpkg = adjacent_rpkg(file);
++        std::cout << "[INSTALL] ROM=" << source << " RPKG=" << (rpkg.empty() ? "<none>" : rpkg.string()) << '\n';
 +        error = loader::install_rom_with_optional_rpkg(&manager, source, rpkg.string(), roms, z,
 +                                                       isolated, nullptr, nullptr);
 +    } else if (ext == ".rpkg") {
