@@ -1,12 +1,9 @@
-# AirXonix r369 — H700 / Android
+# AirXonix r371 — Android + H700
 
-This branch contains the H700 PortMaster + Android ARM64 source tree. OpenXRay main branch is unchanged.
+Latest source: [AirXonix-H700-Android-r371-public-source.zip](AirXonix-H700-Android-r371-public-source.zip). Public source has no proprietary game EXE or MUSIC; build via GitHub Actions with clean-room assets. H700 PortMaster code is retained.
 
-Latest complete source: [AirXonix-H700-Android-r369-public-source.zip](AirXonix-H700-Android-r369-public-source.zip).
+r371 changes: fixes short Android touchscreen A/B taps where legacyPressedCode was set but InputState.action/back were false. Single touch adapter now defers input during animated menu selector and difficulty fade, serializes directional and Enter/Escape pulses, and prevents a held A from confirming two screens. Physical controller and H700 path preserved.
 
-**Android r369:** launcher icon now uses the chosen first AIR XONIX illustration; Android adaptive and legacy icons; JNI buffers short A/B touch presses; joystick navigates menus with initial delay (340 ms) and repeat (145 ms); menu animation releases no longer swallow the next input; opening mode selector accepts first fresh input. Gameplay still uses uninterrupted cardinal movement.
+Includes a full native regression test exercising MainMenu DOWN, UP during slide, A, ModeSelect DOWN and UP, B cancel; keeps earlier unit tests. Icon remains the user's selected AIR XONIX artwork.
 
-- Build: GitHub Actions **Build AirXonix Android** creates an Android ARM64 debug APK with clean-room resources.
-- Original game EXE and MUSIC are **not publicly included**; the user's personal APK can bundle their originals.
-- Includes r369 unit/regression tests and common native game source.
-- See `AirXonix-Android-r367/CHANGELOG_R369_RU.md` for the detailed changes (directory name preserved for build compatibility).
+This branch is isolated from the OpenXRay main branch.
