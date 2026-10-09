@@ -146,7 +146,7 @@ diff -ruN '--exclude=__pycache__' a/PORTMASTER_SUBMODULES.lock b/PORTMASTER_SUBM
 diff -ruN '--exclude=__pycache__' a/portmaster/EKA2L1.sh b/portmaster/EKA2L1.sh
 --- a/portmaster/EKA2L1.sh	1970-01-01 00:00:00.000000000 +0000
 +++ b/portmaster/EKA2L1.sh	2026-10-08 03:20:26.677251891 +0000
-@@ -0,0 +1,24 @@
+@@ -0,0 +1,27 @@
 +#!/bin/sh
 +# EKA2L1 PortMaster / H700 launcher
 +GAMEDIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
@@ -156,6 +156,9 @@ diff -ruN '--exclude=__pycache__' a/portmaster/EKA2L1.sh b/portmaster/EKA2L1.sh
 +export XDG_CONFIG_HOME="$GAMEDIR/config"
 +export XDG_CACHE_HOME="$GAMEDIR/cache"
 +mkdir -p "$XDG_CONFIG_HOME" "$XDG_CACHE_HOME"
++
++# Prefer bundled runtime libraries over CFW-specific versions.
++export LD_LIBRARY_PATH="$GAMEDIR/libs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 +
 +# Some H700 firmware SDL builds require the vendor fbdev video backend.  Leave
 +# autodetection alone by default, but allow the port package/CFW to force it:
