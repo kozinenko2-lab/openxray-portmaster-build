@@ -1,13 +1,12 @@
-# AirXonix r368 — H700 / Android
+# AirXonix r369 — H700 / Android
 
-Исходный код AirXonix для Linux H700 / PortMaster и Android ARM64 (SDL2 / OpenGL ES2).
+This branch contains the H700 PortMaster + Android ARM64 source tree. OpenXRay main branch is unchanged.
 
-**Актуальный полный исходный код:** [AirXonix-H700-Android-r368-public-source.zip](AirXonix-H700-Android-r368-public-source.zip).
+Latest complete source: [AirXonix-H700-Android-r369-public-source.zip](AirXonix-H700-Android-r369-public-source.zip).
 
-Android r368: экранная клавиатура только при вводе имени в рекордах; экранный D-Pad заменён виртуальным аналоговым джойстиком с 20% deadzone и доминирующей осью движения; мультитач, A подтверждает, B отменяет и открывает диалог выхода из игры; расширенная проверка Java-управления.
+**Android r369:** launcher icon now uses the chosen first AIR XONIX illustration; Android adaptive and legacy icons; JNI buffers short A/B touch presses; joystick navigates menus with initial delay (340 ms) and repeat (145 ms); menu animation releases no longer swallow the next input; opening mode selector accepts first fresh input. Gameplay still uses uninterrupted cardinal movement.
 
-GitHub Actions `Build AirXonix Android` собирает тестовый APK только с clean-room ресурсами. Оригинальные EXE/MUSIC намеренно **не публикуются**. Для личной сборки с оригинальными ресурсами требуется собственный набор игровых файлов и Android SDK или перепаковка личного APK.
-
-Основная ветка OpenXRay не менялась. H700-версия сохраняет исходную логику управления: Android-специфичные изменения находятся под `__ANDROID__`.
-
-Примечание: успешная CI-сборка ещё не подтверждает работу всех органов управления на физических устройствах.
+- Build: GitHub Actions **Build AirXonix Android** creates an Android ARM64 debug APK with clean-room resources.
+- Original game EXE and MUSIC are **not publicly included**; the user's personal APK can bundle their originals.
+- Includes r369 unit/regression tests and common native game source.
+- See `AirXonix-Android-r367/CHANGELOG_R369_RU.md` for the detailed changes (directory name preserved for build compatibility).

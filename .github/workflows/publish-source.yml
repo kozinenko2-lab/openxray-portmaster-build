@@ -11,7 +11,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Extract source tree without commercial resources
-        run: python3 -c "import zipfile; zipfile.ZipFile('AirXonix-H700-Android-r368-public-source.zip').extractall('.')"
+        run: python3 -c "import zipfile; zipfile.ZipFile('AirXonix-H700-Android-r369-public-source.zip').extractall('.')"
       - name: Add H700 and Android code files
         shell: bash
         run: |
@@ -19,6 +19,6 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -- AirXonix-Android-r367
           if ! git diff --cached --quiet; then
-            git commit -m 'Expose AirXonix r368 H700 and Android source tree'
+            git commit -m 'Expose AirXonix r369 H700 and Android source tree'
             git push origin "HEAD:${GITHUB_REF_NAME}"
           fi
