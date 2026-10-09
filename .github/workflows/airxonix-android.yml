@@ -36,6 +36,7 @@ jobs:
         run: |
           python3 -m pip install --disable-pip-version-check numpy pillow
           python3 native/tools/generate_cleanroom_resources.py generated/cleanroom
+          mkdir -p app/src/main/assets
           cp generated/AirXonix-cleanroom.zip app/src/main/assets/AirXonix-cleanroom.zip
       - name: Prepare official SDL2
         working-directory: build_source/AirXonix-Android-r367
