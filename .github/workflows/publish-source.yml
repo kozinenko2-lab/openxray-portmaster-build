@@ -1,0 +1,24 @@
+name: Publish browsable AirXonix source tree
+on:
+  push:
+    branches:
+      - airxonix-r367-h700-android
+permissions:
+  contents: write
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Extract source tree without commercial resources
+        run: python3 -c "import zipfile; zipfile.ZipFile('AirXonix-H700-Android-r367-public-source.zip').extractall('.')"
+      - name: Add H700 and Android code files
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- AirXonix-Android-r367
+          if ! git diff --cached --quiet; then
+            git commit -m 'Expose AirXonix r367 H700 and Android source tree'
+            git push origin "HEAD:${GITHUB_REF_NAME}"
+          fi
