@@ -1,11 +1,13 @@
-# AirXonix r367 — H700 / Android
+# AirXonix r368 — H700 / Android
 
-Это отдельная ветка проекта AirXonix, не меняющая основную ветку OpenXRay.
+Исходный код AirXonix для Linux H700 / PortMaster и Android ARM64 (SDL2 / OpenGL ES2).
 
-**Исходники:** [AirXonix-H700-Android-r367-public-source.zip](AirXonix-H700-Android-r367-public-source.zip) — содержит полный C++ порт H700/PortMaster, исходники Android ARM64 (SDL2/OpenGL ES2), Gradle/CMake, настройки и тесты.
+**Актуальный полный исходный код:** [AirXonix-H700-Android-r368-public-source.zip](AirXonix-H700-Android-r368-public-source.zip).
 
-**Ресурсы:** оригинальные коммерческие EXE и MUSIC не опубликованы. Workflow `Build AirXonix Android` собирает APK с синтезированными clean-room ресурсами. Для сборки со своими оригинальными данными распакуйте архив, запустите `python3 scripts/bundle_personal_assets.py /path/to/game` и соберите локально через Android SDK.
+Android r368: экранная клавиатура только при вводе имени в рекордах; экранный D-Pad заменён виртуальным аналоговым джойстиком с 20% deadzone и доминирующей осью движения; мультитач, A подтверждает, B отменяет и открывает диалог выхода из игры; расширенная проверка Java-управления.
 
-**Статус:** Android APK и запуск на устройстве требуют проверки результатов CI и аппаратного тестирования. Нельзя считать сборку успешной до завершения GitHub Actions.
+GitHub Actions `Build AirXonix Android` собирает тестовый APK только с clean-room ресурсами. Оригинальные EXE/MUSIC намеренно **не публикуются**. Для личной сборки с оригинальными ресурсами требуется собственный набор игровых файлов и Android SDK или перепаковка личного APK.
 
-Оригинальный H700 лаунчер: `native/portmaster/AirXonix.sh` внутри архива.
+Основная ветка OpenXRay не менялась. H700-версия сохраняет исходную логику управления: Android-специфичные изменения находятся под `__ANDROID__`.
+
+Примечание: успешная CI-сборка ещё не подтверждает работу всех органов управления на физических устройствах.
