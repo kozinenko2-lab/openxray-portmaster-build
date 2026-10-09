@@ -212,8 +212,10 @@ int main(int argc,char** argv){
         // Menu screens need discrete events and delayed repeats from a held
         // virtual stick; gameplay retains continuous cardinal movement.
         const auto phase = game.phase();
+        // ModeSelect has an original release-to-arm keyboard latch and needs
+        // held key levels, unlike the repeating navigation in MainMenu.
         inputSystem.setMenuTouchNavigation(phase==GamePhase::MainMenu ||
-            phase==GamePhase::ModeSelect || phase==GamePhase::Settings ||
+            phase==GamePhase::Settings ||
             phase==GamePhase::Controls || phase==GamePhase::Records ||
             phase==GamePhase::Information);
         inputSystem.poll(input);

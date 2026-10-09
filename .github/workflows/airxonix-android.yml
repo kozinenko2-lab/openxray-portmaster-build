@@ -30,7 +30,7 @@ jobs:
           yes | "$SDKMANAGER" --licenses >/dev/null || true
           "$SDKMANAGER" 'platforms;android-35' 'build-tools;35.0.0' 'ndk;27.2.12479018' 'cmake;3.22.1'
       - name: Extract source archive
-        run: python3 -c "import zipfile; zipfile.ZipFile('AirXonix-H700-Android-r369-public-source.zip').extractall('build_source')"
+        run: mkdir -p build_source && cp -a AirXonix-Android-r367 build_source/
       - name: Generate clean-room assets
         working-directory: build_source/AirXonix-Android-r367
         run: |
@@ -41,11 +41,17 @@ jobs:
       - name: Prepare official SDL2
         working-directory: build_source/AirXonix-Android-r367
         run: bash scripts/prepare_sdl2.sh
+      - name: Verify r370 touchscreen keyboard mapping
+        working-directory: build_source/AirXonix-Android-r367
+        shell: bash
+        run: |
+          c++ -std=c++17 -I native/src native/tests/test_android_keyboard_r370.cpp -o /tmp/test_android_keyboard_r370
+          /tmp/test_android_keyboard_r370
       - name: Build ARM64 APK
         working-directory: build_source/AirXonix-Android-r367
         run: gradle --no-daemon --console=plain :app:assembleDebug
       - uses: actions/upload-artifact@v4
         with:
-          name: AirXonix-Android-r369-ARM64-cleanroom
+          name: AirXonix-Android-r370-ARM64-cleanroom
           path: build_source/AirXonix-Android-r367/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error

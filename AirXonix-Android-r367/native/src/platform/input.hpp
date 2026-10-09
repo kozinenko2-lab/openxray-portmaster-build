@@ -37,6 +37,38 @@ struct InputState {
     }
 };
 
+
+ // Android touchscreen maps to SDL keyboard's Win32-compatible key namespace,
+ // not the J1 joystick pseudo-keys used on H700.
+struct AndroidTouchKeyboard {
+    static constexpr unsigned Up=1u, Down=2u, Left=4u, Right=8u;
+    static constexpr unsigned Enter=16u, Escape=32u, Pause=64u;
+    static constexpr unsigned Directions=Up|Down|Left|Right;
+
+    static void apply(InputState& s, unsigned active, unsigned downEdges, bool repeatDirections) {
+        auto held=[&](unsigned bit,int vk) {
+            if(active&bit) s.legacyHeld[static_cast<std::size_t>(vk)]=true;
+        };
+        s.up    |= (active&Up)!=0;   held(Up,0x26);
+        s.down  |= (active&Down)!=0; held(Down,0x28);
+        s.left  |= (active&Left)!=0; held(Left,0x25);
+        s.right |= (active&Right)!=0;held(Right,0x27);
+        s.action|= (active&Enter)!=0;held(Enter,0x0D);
+        s.back  |= (active&Escape)!=0;held(Escape,0x1B);
+        s.pause |= (active&Pause)!=0;held(Pause,0x50);
+        unsigned event=downEdges;
+        if(repeatDirections) event |= active&Directions;
+        const int key = (event&Enter)?0x0D : (event&Escape)?0x1B :
+                        (event&Up)?0x26 : (event&Down)?0x28 :
+                        (event&Left)?0x25 : (event&Right)?0x27 :
+                        (event&Pause)?0x50 : -1;
+        if(key>=0) {
+            s.legacyPressedCode=key;
+            s.legacyPressedFromController=false;
+        }
+    }
+};
+
 class InputSystem {
 public:
     InputSystem();

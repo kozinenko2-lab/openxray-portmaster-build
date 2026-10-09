@@ -389,26 +389,15 @@ void InputSystem::poll(InputState& s) {
     const unsigned held = axTouchMask.load(std::memory_order_acquire);
     const unsigned fresh = axTouchEdges.exchange(0, std::memory_order_acq_rel);
     const unsigned touch = androidTouchMenu_.frame(held, fresh, menuTouchNavigation_, SDL_GetTicks());
-    s.up|=(touch&T_UP)!=0; s.down|=(touch&T_DOWN)!=0;
-    s.left|=(touch&T_LEFT)!=0; s.right|=(touch&T_RIGHT)!=0;
-    s.action|=(touch&T_ACTION)!=0;
-    s.back|=(touch&T_BACK)!=0;
-    s.pause|=(touch&T_PAUSE)!=0;
-    if(fresh || (menuTouchNavigation_ && (touch & 0x0fu))){
-        if((touch&T_UP) && ((fresh&T_UP) || menuTouchNavigation_)){s.legacyPressedCode=0x103;eventCardinal=1;}
-        else if((touch&T_DOWN) && ((fresh&T_DOWN) || menuTouchNavigation_)){s.legacyPressedCode=0x102;eventCardinal=2;}
-        else if((touch&T_LEFT) && ((fresh&T_LEFT) || menuTouchNavigation_)){s.legacyPressedCode=0x101;eventCardinal=3;}
-        else if((touch&T_RIGHT) && ((fresh&T_RIGHT) || menuTouchNavigation_)){s.legacyPressedCode=0x100;eventCardinal=4;}
-        else if(fresh&T_ACTION){s.legacyPressedCode=0x104;}
-        else if(fresh&T_BACK){s.legacyPressedCode=0x105;}
-        else if(fresh&T_PAUSE){s.legacyPressedCode=0x106;}
-        s.legacyPressedFromController=true;
+    // Touch control acts as a physical keyboard: arrows/Enter/Escape.
+    // Bluetooth/USB gamepads retain their separate J1 key mapping.
+    AndroidTouchKeyboard::apply(s,touch,fresh,menuTouchNavigation_);
+    if(touch & AndroidTouchKeyboard::Directions) {
+        if(touch&AndroidTouchKeyboard::Up) eventCardinal=1;
+        else if(touch&AndroidTouchKeyboard::Down) eventCardinal=2;
+        else if(touch&AndroidTouchKeyboard::Left) eventCardinal=3;
+        else if(touch&AndroidTouchKeyboard::Right) eventCardinal=4;
     }
-    s.legacyHeld[0x0D]=s.legacyHeld[0x0D] || (touch&T_ACTION);
-    s.legacyHeld[0x1B]=s.legacyHeld[0x1B] || (touch&T_BACK);
-    s.legacyHeld[0x104]=s.legacyHeld[0x104] || (touch&T_ACTION);
-    s.legacyHeld[0x105]=s.legacyHeld[0x105] || (touch&T_BACK);
-    s.legacyHeld[0x106]=s.legacyHeld[0x106] || (touch&T_PAUSE);
 #endif
 
     // AirXonix movement is strictly cardinal. Resolve D-pad rollover using the
@@ -443,10 +432,12 @@ void InputSystem::poll(InputState& s) {
     else if(s.left)lastCardinalDirection_=3;
     else if(s.right)lastCardinalDirection_=4;
     else lastCardinalDirection_=0;
+#if !defined(__ANDROID__)
     s.legacyHeld[0x100]=s.right;
     s.legacyHeld[0x101]=s.left;
     s.legacyHeld[0x102]=s.down;
     s.legacyHeld[0x103]=s.up;
+#endif
 
     // PortMaster convention. This is native and does not depend on gptokeyb.
     if((selectPressed&&startPressed)||rawSelectStart(joystick_)) {
