@@ -1,9 +1,11 @@
-# AirXonix r371 — Android + H700
+# AirXonix r372 — новая система Android-управления
 
-Latest source: [AirXonix-H700-Android-r371-public-source.zip](AirXonix-H700-Android-r371-public-source.zip). Public source has no proprietary game EXE or MUSIC; build via GitHub Actions with clean-room assets. H700 PortMaster code is retained.
+**Актуальный исходный код:** [AirXonix-H700-Android-r372-public-source.zip](AirXonix-H700-Android-r372-public-source.zip). Внутри Android ARM64 и оригинальная H700/PortMaster-версия.
 
-r371 changes: fixes short Android touchscreen A/B taps where legacyPressedCode was set but InputState.action/back were false. Single touch adapter now defers input during animated menu selector and difficulty fade, serializes directional and Enter/Escape pulses, and prevents a held A from confirming two screens. Physical controller and H700 path preserved.
+**Android r372:** полная замена связки r368–r371. Java отправляет отдельные события DOWN/UP в потокобезопасную C++ очередь. Экранный стик = стрелки; A = Enter; B = Escape, Pause = P. Каждая короткая кнопка сохраняется до SDL-кадра. Меню получает нажатие, затем нейтральный кадр, чтобы разблокировать оригинальный latch. Повтор направления через 350/140 мс. Состояния MainMenu/ModeSelect/Settings ждут завершения анимаций, игровое движение остаётся непрерывным.
 
-Includes a full native regression test exercising MainMenu DOWN, UP during slide, A, ModeSelect DOWN and UP, B cancel; keeps earlier unit tests. Icon remains the user's selected AIR XONIX artwork.
+Логи: `adb logcat -s AirXonixTouch:D`. Регрессионный тест: `android_virtual_input_r372` проверяет реальные переходы главного меню/выбора сложности и все быстрые A/B.
 
-This branch is isolated from the OpenXRay main branch.
+Публичные исходники **не содержат оригинальный EXE и MUSIC**. Личная Android-сборка с ресурсами пользователя хранится вне GitHub; Actions собирает clean-room APK.
+
+Ветку H700 и основную ветку OpenXRay не изменяли.

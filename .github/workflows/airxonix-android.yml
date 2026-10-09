@@ -30,7 +30,7 @@ jobs:
           yes | "$SDKMANAGER" --licenses >/dev/null || true
           "$SDKMANAGER" 'platforms;android-35' 'build-tools;35.0.0' 'ndk;27.2.12479018' 'cmake;3.22.1'
       - name: Extract source archive
-        run: python3 -c "import zipfile; zipfile.ZipFile('AirXonix-H700-Android-r371-public-source.zip').extractall('build_source')"
+        run: python3 -c "import zipfile; zipfile.ZipFile('AirXonix-H700-Android-r372-public-source.zip').extractall('build_source')"
       - name: Generate clean-room assets
         working-directory: build_source/AirXonix-Android-r367
         run: |
@@ -41,20 +41,20 @@ jobs:
       - name: Prepare official SDL2
         working-directory: build_source/AirXonix-Android-r367
         run: bash scripts/prepare_sdl2.sh
-      - name: Verify r371 keyboard mapping and menu state
+      - name: Verify r372 rewritten Android event bridge
         working-directory: build_source/AirXonix-Android-r367
         shell: bash
         run: |
           c++ -std=c++17 -I native/src native/tests/test_android_keyboard_r370.cpp -o /tmp/test_android_keyboard_r370
           /tmp/test_android_keyboard_r370
           cmake -S native -B build-native-tests -DAIRXONIX_BUILD_RUNTIME=OFF -DAIRXONIX_BUILD_TESTS=ON
-          cmake --build build-native-tests --target test_android_touch_bridge_r371 test_android_touch_pulses_r369 -j 2
-          ctest --test-dir build-native-tests -R 'android_touch_bridge_r371|android_touch_pulses_r369' --output-on-failure
+          cmake --build build-native-tests --target test_android_virtual_input_r372 test_android_touch_bridge_r371 -j 2
+          ctest --test-dir build-native-tests -R 'android_virtual_input_r372|android_touch_bridge_r371' --output-on-failure
       - name: Build ARM64 APK
         working-directory: build_source/AirXonix-Android-r367
         run: gradle --no-daemon --console=plain :app:assembleDebug
       - uses: actions/upload-artifact@v4
         with:
-          name: AirXonix-Android-r371-ARM64-cleanroom
+          name: AirXonix-Android-r372-ARM64-cleanroom
           path: build_source/AirXonix-Android-r367/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
