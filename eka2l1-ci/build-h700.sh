@@ -104,20 +104,39 @@ if [ -n "$ZLIB_HEADER" ] && [ -n "$ZLIB_LIB" ]; then
   FFMPEG_ZLIB_CFLAGS="-I$H700_ZLIB_OVERLAY/include"
   FFMPEG_ZLIB_LDFLAGS="-L$H700_ZLIB_OVERLAY/lib"
 
-  # Final link uses the GCC11/glibc-2.35 sysroot, while SDL2/libpng come from
-  # the H700 SDK. Let ld resolve their DT_NEEDED dependencies (notably
-  # libsamplerate.so.0 and libz.so.1) from the device SDK without importing
-  # its older libc headers into compilation.
-  H700_RPATH_LINKS="-Wl,-rpath-link,$PREFIX_LOCAL/lib"
-  for libdir in "$BASE_H700_SYSROOT/usr/lib" "$BASE_H700_SYSROOT/lib" "$BASE_H700_SYSROOT/usr/lib/aarch64-linux-gnu" "$BASE_H700_SYSROOT/lib/aarch64-linux-gnu"; do
-    if [ -d "$libdir" ]; then
-      H700_RPATH_LINKS="$H700_RPATH_LINKS -Wl,-rpath-link,$libdir"
-    fi
-  done
+  # Final link must not expose the complete old glibc-2.33 SDK to ld:
+  # doing so can make ld pick its libpthread/libdl and then fail on GLIBC_PRIVATE.
+  # Copy only the ABI-compatible DT_NEEDED libraries required by H700 SDL2/libpng
+  # into an isolated overlay. Their libc/libm dependencies are then resolved from
+  # the GCC11/glibc-2.35 sysroot.
+  H700_RUNTIME_OVERLAY=/opt/h700-runtime-overlay
+  rm -rf "$H700_RUNTIME_OVERLAY"
+  mkdir -p "$H700_RUNTIME_OVERLAY/lib"
 
-  echo "=== H700 transitive runtime libraries ==="
-  find "$PREFIX_LOCAL" "$BASE_H700_SYSROOT" \
-    \( -name 'libsamplerate.so*' -o -name 'libz.so*' \) -print 2>/dev/null | head -80 || true
+  SAMPLERATE_SHARED="$(find "$BASE_H700_SYSROOT" -name 'libsamplerate.so.0' -print -quit 2>/dev/null || true)"
+  if [ -z "$SAMPLERATE_SHARED" ]; then
+    SAMPLERATE_SHARED="$(find "$BASE_H700_SYSROOT" -name 'libsamplerate.so.0.*' -print -quit 2>/dev/null || true)"
+  fi
+  ZLIB_SONAME="$(find "$BASE_H700_SYSROOT" -name 'libz.so.1' -print -quit 2>/dev/null || true)"
+  if [ -z "$ZLIB_SONAME" ]; then
+    ZLIB_SONAME="$(find "$BASE_H700_SYSROOT" -name 'libz.so.1.*' -print -quit 2>/dev/null || true)"
+  fi
+
+  if [ -z "$SAMPLERATE_SHARED" ] || [ -z "$ZLIB_SONAME" ]; then
+    echo "ERROR: required H700 runtime libs not found (libsamplerate.so.0/libz.so.1)" >&2
+    find "$BASE_H700_SYSROOT" \
+      \( -name 'libsamplerate.so*' -o -name 'libz.so*' \) -print 2>/dev/null | head -80 || true
+    exit 1
+  fi
+
+  cp -L "$SAMPLERATE_SHARED" "$H700_RUNTIME_OVERLAY/lib/libsamplerate.so.0"
+  cp -L "$ZLIB_SONAME" "$H700_RUNTIME_OVERLAY/lib/libz.so.1"
+  H700_RPATH_LINKS="-Wl,-rpath-link,$PREFIX_LOCAL/lib -Wl,-rpath-link,$H700_RUNTIME_OVERLAY/lib"
+
+  echo "=== isolated H700 runtime overlay ==="
+  ls -l "$H700_RUNTIME_OVERLAY/lib"
+  "$READELF" -d "$H700_RUNTIME_OVERLAY/lib/libsamplerate.so.0" | grep NEEDED || true
+  "$READELF" -d "$H700_RUNTIME_OVERLAY/lib/libz.so.1" | grep NEEDED || true
 else
   echo "ERROR: H700 SDK zlib headers/library not found under $BASE_H700_SYSROOT" >&2
   find "$BASE_H700_SYSROOT" -maxdepth 5 \( -name zlib.h -o -name libz.a -o -name 'libz.so*' \) -print 2>/dev/null | head -50 || true
