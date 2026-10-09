@@ -179,4 +179,49 @@ file build-h700/bin/eka2l1_portmaster
 "$READELF" -h build-h700/bin/eka2l1_portmaster
 "$READELF" -d build-h700/bin/eka2l1_portmaster
 
-cp -f build-h700/bin/eka2l1_portmaster /root/workspace/ci-artifacts/
+# Stage a self-contained PortMaster runtime instead of a diagnostics-only ELF.
+RUNTIME_OUT=/root/workspace/ci-artifacts/EKA2L1
+rm -rf "$RUNTIME_OUT"
+mkdir -p "$RUNTIME_OUT/libs"
+
+cp -f build-h700/bin/eka2l1_portmaster "$RUNTIME_OUT/eka2l1_portmaster"
+"$GCC11_DIR/bin/aarch64-none-linux-gnu-strip" --strip-unneeded "$RUNTIME_OUT/eka2l1_portmaster"
+
+for d in resources compat patch; do
+  if [ -d "build-h700/bin/$d" ]; then
+    cp -a "build-h700/bin/$d" "$RUNTIME_OUT/$d"
+  fi
+done
+
+cp -L "$LIBSTDCPP_REAL" "$RUNTIME_OUT/libs/libstdc++.so.6"
+cp -L "$LIBGCC_REAL" "$RUNTIME_OUT/libs/libgcc_s.so.1"
+cp -L "$H700_RUNTIME_OVERLAY/lib/libsamplerate.so.0" "$RUNTIME_OUT/libs/libsamplerate.so.0"
+cp -L "$H700_RUNTIME_OVERLAY/lib/libz.so.1" "$RUNTIME_OUT/libs/libz.so.1"
+
+SDL2_REAL="$(find "$PREFIX_LOCAL/lib" -type f \( -name 'libSDL2-2.0.so.*' -o -name 'libSDL2.so.*' \) -print -quit 2>/dev/null || true)"
+PNG12_REAL="$(find "$BASE_H700_SYSROOT" -type f -name 'libpng12.so.0*' -print -quit 2>/dev/null || true)"
+BZ2_REAL="$(find "$BASE_H700_SYSROOT" -type f -name 'libbz2.so.1.0*' -print -quit 2>/dev/null || true)"
+
+if [ -z "$SDL2_REAL" ] || [ -z "$PNG12_REAL" ] || [ -z "$BZ2_REAL" ]; then
+  echo "ERROR: one or more packaged runtime libraries were not found" >&2
+  echo "SDL2_REAL=$SDL2_REAL" >&2
+  echo "PNG12_REAL=$PNG12_REAL" >&2
+  echo "BZ2_REAL=$BZ2_REAL" >&2
+  exit 1
+fi
+
+cp -L "$SDL2_REAL" "$RUNTIME_OUT/libs/libSDL2-2.0.so.0"
+cp -L "$PNG12_REAL" "$RUNTIME_OUT/libs/libpng12.so.0"
+cp -L "$BZ2_REAL" "$RUNTIME_OUT/libs/libbz2.so.1.0"
+
+echo "=== packaged runtime ==="
+file "$RUNTIME_OUT/eka2l1_portmaster"
+du -sh "$RUNTIME_OUT"
+find "$RUNTIME_OUT" -maxdepth 2 -type f -printf '%P %s bytes\n' | sort
+
+echo "=== packaged ELF dependencies ==="
+"$READELF" -d "$RUNTIME_OUT/eka2l1_portmaster" | grep NEEDED || true
+for lib in "$RUNTIME_OUT"/libs/*.so*; do
+  echo "--- $(basename "$lib")"
+  "$READELF" -d "$lib" | grep -E 'NEEDED|SONAME' || true
+done
