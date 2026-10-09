@@ -1,0 +1,10 @@
+EKA2L1 PortMaster H700 v3 source backup
+Upstream commit: 11f5b6cd141c0884a130ee45743f1f5e17bb1783
+Source branch: eka2l1-h700-v3
+Backup branch: eka2l1-h700-backup-v3
+Successful build run: 37865300058
+Successful package run: 37867681647
+Architecture: AArch64
+Target: Allwinner H700 / PortMaster
+Graphics: native OpenGL ES 3 via SDL2 Mali fbdev
+ABI ceiling verified: GLIBC_2.35
