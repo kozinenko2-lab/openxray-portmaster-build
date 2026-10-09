@@ -103,6 +103,21 @@ if [ -n "$ZLIB_HEADER" ] && [ -n "$ZLIB_LIB" ]; then
 
   FFMPEG_ZLIB_CFLAGS="-I$H700_ZLIB_OVERLAY/include"
   FFMPEG_ZLIB_LDFLAGS="-L$H700_ZLIB_OVERLAY/lib"
+
+  # Final link uses the GCC11/glibc-2.35 sysroot, while SDL2/libpng come from
+  # the H700 SDK. Let ld resolve their DT_NEEDED dependencies (notably
+  # libsamplerate.so.0 and libz.so.1) from the device SDK without importing
+  # its older libc headers into compilation.
+  H700_RPATH_LINKS="-Wl,-rpath-link,$PREFIX_LOCAL/lib"
+  for libdir in "$BASE_H700_SYSROOT/usr/lib" "$BASE_H700_SYSROOT/lib" "$BASE_H700_SYSROOT/usr/lib/aarch64-linux-gnu" "$BASE_H700_SYSROOT/lib/aarch64-linux-gnu"; do
+    if [ -d "$libdir" ]; then
+      H700_RPATH_LINKS="$H700_RPATH_LINKS -Wl,-rpath-link,$libdir"
+    fi
+  done
+
+  echo "=== H700 transitive runtime libraries ==="
+  find "$PREFIX_LOCAL" "$BASE_H700_SYSROOT" \
+    \( -name 'libsamplerate.so*' -o -name 'libz.so*' \) -print 2>/dev/null | head -80 || true
 else
   echo "ERROR: H700 SDK zlib headers/library not found under $BASE_H700_SYSROOT" >&2
   find "$BASE_H700_SYSROOT" -maxdepth 5 \( -name zlib.h -o -name libz.a -o -name 'libz.so*' \) -print 2>/dev/null | head -50 || true
@@ -131,7 +146,7 @@ cmake -S . -B build-h700 -G Ninja \
   -DCMAKE_PREFIX_PATH="$PREFIX_LOCAL" \
   -DCMAKE_C_FLAGS="-mcpu=cortex-a53 -mtune=cortex-a53 $FFMPEG_ZLIB_CFLAGS" \
   -DCMAKE_CXX_FLAGS="-mcpu=cortex-a53 -mtune=cortex-a53" \
-  -DCMAKE_EXE_LINKER_FLAGS="$FFMPEG_ZLIB_LDFLAGS" \
+  -DCMAKE_EXE_LINKER_FLAGS="$FFMPEG_ZLIB_LDFLAGS $H700_RPATH_LINKS" \
   -DEKA2L1_PORTMASTER=ON \
   -DEKA2L1_BUILD_TESTS=OFF \
   -DEKA2L1_BUILD_TOOLS=OFF \
