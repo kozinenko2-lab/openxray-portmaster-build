@@ -1915,8 +1915,13 @@ void Game::updateMainMenu(const InputState& input,int dtMs){
     // exactly matches selected*(-.003). During the slide, new menu events are
     // deliberately ignored.
     const float selectorTarget=kLegacyMainMenuSelectorSlideTrace.targetFor(mainMenu_.selected);
-    if(std::fabs(mainMenu_.selectorOffset-selectorTarget)>1.0e-7f)return;
     const bool any=input.up||input.down||input.action||input.back||input.right;
+    // Observe releases while a row is sliding. Previously the latch remained
+    // stuck from the previous press, so subsequent touches were discarded.
+    if(std::fabs(mainMenu_.selectorOffset-selectorTarget)>1.0e-7f){
+        if(!any)mainMenu_.inputLatched=false;
+        return;
+    }
     if(!any){mainMenu_.inputLatched=false;return;}
     if(mainMenu_.inputLatched)return;
     mainMenu_.inputLatched=true;
@@ -1991,7 +1996,10 @@ void Game::updateModeSelect(const InputState& input,int dtMs){
         if(modeSelect_.fadeCounter>0x7c0){
             modeSelect_.fadeCounter=0x7c0;
             modeSelect_.readyForInput=true;
-            modeSelect_.inputLatched=true;
+            // A held confirmation from the prior menu must not auto-confirm,
+            // but a fully released control must be armed immediately.
+            modeSelect_.inputLatched=input.up||input.down||input.action||
+                input.back||input.left||input.right;
         }
         return;
     }

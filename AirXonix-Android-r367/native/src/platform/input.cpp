@@ -1,5 +1,6 @@
 #include "input.hpp"
 #include "platform/legacy_text.hpp"
+#include "platform/android_touch_menu.hpp"
 #include <SDL.h>
 #include <algorithm>
 #include <cstdio>
@@ -13,6 +14,7 @@
 
 namespace {
 std::atomic<unsigned> axTouchMask{0};
+std::atomic<unsigned> axTouchEdges{0};
 constexpr unsigned T_UP=1u<<0, T_DOWN=1u<<1, T_LEFT=1u<<2, T_RIGHT=1u<<3,
                    T_ACTION=1u<<4, T_BACK=1u<<5, T_PAUSE=1u<<6;
 
@@ -34,7 +36,11 @@ void vibrateAndroid(float strength, std::uint32_t ms) {
 }
 extern "C" JNIEXPORT void JNICALL
 Java_com_airxonix_nativeport_AirXonixActivity_nativeSetPadMask(JNIEnv*,jclass,jint mask) {
-    axTouchMask.store(static_cast<unsigned>(mask)&0x7fu, std::memory_order_relaxed);
+    // Retain the DOWN edge even if an Android DOWN+UP happens between SDL frames.
+    // Sampling only the currently held mask silently lost fast A/B presses.
+    const unsigned next = static_cast<unsigned>(mask)&0x7fu;
+    const unsigned prior = axTouchMask.exchange(next, std::memory_order_acq_rel);
+    axTouchEdges.fetch_or(next & ~prior, std::memory_order_release);
 }
 #endif
 
@@ -380,20 +386,19 @@ void InputSystem::poll(InputState& s) {
 
 #if defined(__ANDROID__)
     // Multi-touch overlay is platform-only and never changes PC/PortMaster input.
-    const unsigned touch = axTouchMask.load(std::memory_order_relaxed);
-    static unsigned priorTouch=0;
-    const unsigned fresh=touch & ~priorTouch;
-    priorTouch=touch;
+    const unsigned held = axTouchMask.load(std::memory_order_acquire);
+    const unsigned fresh = axTouchEdges.exchange(0, std::memory_order_acq_rel);
+    const unsigned touch = androidTouchMenu_.frame(held, fresh, menuTouchNavigation_, SDL_GetTicks());
     s.up|=(touch&T_UP)!=0; s.down|=(touch&T_DOWN)!=0;
     s.left|=(touch&T_LEFT)!=0; s.right|=(touch&T_RIGHT)!=0;
     s.action|=(touch&T_ACTION)!=0;
     s.back|=(touch&T_BACK)!=0;
     s.pause|=(touch&T_PAUSE)!=0;
-    if(fresh){
-        if(fresh&T_UP){s.legacyPressedCode=0x103;eventCardinal=1;}
-        else if(fresh&T_DOWN){s.legacyPressedCode=0x102;eventCardinal=2;}
-        else if(fresh&T_LEFT){s.legacyPressedCode=0x101;eventCardinal=3;}
-        else if(fresh&T_RIGHT){s.legacyPressedCode=0x100;eventCardinal=4;}
+    if(fresh || (menuTouchNavigation_ && (touch & 0x0fu))){
+        if((touch&T_UP) && ((fresh&T_UP) || menuTouchNavigation_)){s.legacyPressedCode=0x103;eventCardinal=1;}
+        else if((touch&T_DOWN) && ((fresh&T_DOWN) || menuTouchNavigation_)){s.legacyPressedCode=0x102;eventCardinal=2;}
+        else if((touch&T_LEFT) && ((fresh&T_LEFT) || menuTouchNavigation_)){s.legacyPressedCode=0x101;eventCardinal=3;}
+        else if((touch&T_RIGHT) && ((fresh&T_RIGHT) || menuTouchNavigation_)){s.legacyPressedCode=0x100;eventCardinal=4;}
         else if(fresh&T_ACTION){s.legacyPressedCode=0x104;}
         else if(fresh&T_BACK){s.legacyPressedCode=0x105;}
         else if(fresh&T_PAUSE){s.legacyPressedCode=0x106;}

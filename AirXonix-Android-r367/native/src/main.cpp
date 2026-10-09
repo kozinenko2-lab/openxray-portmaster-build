@@ -209,6 +209,13 @@ int main(int argc,char** argv){
         // r368 Android: transition-based soft keyboard; only during high-score
         // name entry. Game state remains the single source of truth.
         inputSystem.setRecordNameTextInput(game.recordNameEntryActive());
+        // Menu screens need discrete events and delayed repeats from a held
+        // virtual stick; gameplay retains continuous cardinal movement.
+        const auto phase = game.phase();
+        inputSystem.setMenuTouchNavigation(phase==GamePhase::MainMenu ||
+            phase==GamePhase::ModeSelect || phase==GamePhase::Settings ||
+            phase==GamePhase::Controls || phase==GamePhase::Records ||
+            phase==GamePhase::Information);
         inputSystem.poll(input);
         {   // debug-only scripted input: AIRXONIX_INPUT="up@100-200,left@250-300"
             static const std::string script=[](){const char* e=std::getenv("AIRXONIX_INPUT");return std::string(e?e:"");}();

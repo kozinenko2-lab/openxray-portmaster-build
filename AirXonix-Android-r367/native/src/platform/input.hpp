@@ -2,6 +2,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include "platform/android_touch_menu.hpp"
 
 // Keep the gameplay-facing input state independent from SDL. The native
 // platform implementation includes SDL only in input.cpp, which lets the
@@ -41,6 +42,7 @@ public:
     InputSystem();
     ~InputSystem();
     void poll(InputState& state);
+    void setMenuTouchNavigation(bool enabled) { menuTouchNavigation_=enabled; }
     void setRecordNameTextInput(bool enabled); // Android: show IME ONLY in high-score name editor
     bool rumble(float strength01,std::uint32_t durationMs);
 private:
@@ -53,7 +55,9 @@ private:
     unsigned loggedButtonMask_ = 0;
     int lastCardinalDirection_ = 0; // 1 up, 2 down, 3 left, 4 right
     unsigned lastRawHatState_ = 0;
-    bool preferRawDirections_ = false; // muOS/Deeplay: raw hat/axes are more reliable than mapped GC directions
+    bool preferRawDirections_ = false;
+    bool menuTouchNavigation_ = false;
+    AndroidTouchMenu androidTouchMenu_{}; // muOS/Deeplay: raw hat/axes are more reliable than mapped GC directions
 
     void closeDevice();
     void openFirstInputDevice();

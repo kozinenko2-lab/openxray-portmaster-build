@@ -5,7 +5,8 @@
     <uses-feature android:name="android.hardware.gamepad" android:required="false" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <application android:label="AirXonix" android:allowBackup="false"
-        android:theme="@android:style/Theme.Material.NoActionBar" android:hardwareAccelerated="true">
+        android:theme="@android:style/Theme.Material.NoActionBar"
+        android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher_round" android:hardwareAccelerated="true">
         <activity android:name=".AirXonixActivity" android:exported="true"
             android:screenOrientation="landscape" android:launchMode="singleTask"
             android:configChanges="orientation|keyboard|keyboardHidden|navigation|screenSize|smallestScreenSize|uiMode|layoutDirection|locale">
