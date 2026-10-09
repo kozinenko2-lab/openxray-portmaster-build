@@ -206,6 +206,9 @@ int main(int argc,char** argv){
     std::fprintf(stderr,"AX_BOOT 08 game loop begin (main menu)\n");
     std::uint64_t frameCounter=0;
     while(!game.wantsQuit()){
+        // r368 Android: transition-based soft keyboard; only during high-score
+        // name entry. Game state remains the single source of truth.
+        inputSystem.setRecordNameTextInput(game.recordNameEntryActive());
         inputSystem.poll(input);
         {   // debug-only scripted input: AIRXONIX_INPUT="up@100-200,left@250-300"
             static const std::string script=[](){const char* e=std::getenv("AIRXONIX_INPUT");return std::string(e?e:"");}();
@@ -226,6 +229,8 @@ int main(int argc,char** argv){
         }const bool textureLabWasActive=renderer.textureLabActive();renderer.handleTextureLabInput(input);const int dtMs=clock.tick(game.timeScale());
         const int livesBeforeUpdate=game.lives();
         if(!textureLabWasActive && !renderer.textureLabActive())game.update(input,dtMs);
+        // Also close the IME on the very frame A confirms / B cancels a name.
+        inputSystem.setRecordNameTextInput(game.recordNameEntryActive());
         if(vibrationEnabled && game.lives()<livesBeforeUpdate)
             inputSystem.rumble(float(vibrationStrengthPercent)/100.0f,static_cast<std::uint32_t>(vibrationDurationMs));
         renderer.syncLevelLoad(game.levelLoadSerial());

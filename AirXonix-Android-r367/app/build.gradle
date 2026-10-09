@@ -7,8 +7,8 @@ android {
         applicationId 'com.airxonix.nativeport'
         minSdk 26
         targetSdk 34
-        versionCode 367
-        versionName '0.367-android-preview'
+        versionCode 368
+        versionName '0.368-android-input-fix'
         ndk { abiFilters 'arm64-v8a' }
         externalNativeBuild {
             cmake { arguments '-DANDROID_STL=c++_static',

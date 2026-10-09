@@ -402,6 +402,7 @@ public:
     int legacyCameraYawOffset() const{return legacyCameraYawOffset_;}
     int displayCameraYawOffset() const{return phase_==GamePhase::Dying?deathScene_.cameraYawOffset:(phase_==GamePhase::GameOver?gameOverScene_.visual.cameraYawOffset:legacyCameraYawOffset_);}
     GamePhase phase() const{return phase_;}
+    bool recordNameEntryActive() const{return phase_==GamePhase::Records && records_.nameEntry;}
     bool levelIntroActive() const{return levelIntroScene_.active();}
     bool levelEntryActive() const{return levelEntryScene_.active();}
     const LevelEntryState& levelEntryScene() const{return levelEntryScene_;}

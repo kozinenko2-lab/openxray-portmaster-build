@@ -41,6 +41,7 @@ public:
     InputSystem();
     ~InputSystem();
     void poll(InputState& state);
+    void setRecordNameTextInput(bool enabled); // Android: show IME ONLY in high-score name editor
     bool rumble(float strength01,std::uint32_t durationMs);
 private:
     _SDL_GameController* controller_ = nullptr;

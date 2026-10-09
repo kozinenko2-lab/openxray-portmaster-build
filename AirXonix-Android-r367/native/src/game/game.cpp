@@ -2065,7 +2065,13 @@ void Game::update(const InputState& input,int dtMs){
     // Native PortMaster mapping: Select replaces the original PC Esc request.
     // Keep keyboard Esc as a compatibility trigger, while controller B is reserved
     // for Cancel inside the confirmation modal.
+#if defined(__ANDROID__)
+    // Touchscreen has no dedicated Select button: B opens the same abort
+    // confirmation and still cancels when that confirmation is visible.
+    if(input.select || input.back || input.legacyPressedCode==0x1B){beginAbortConfirm();return;}
+#else
     if(input.select || input.legacyPressedCode==0x1B){beginAbortConfirm();return;}
+#endif
     if(input.pause&&!pauseLatch_){ beginPause(); return; }
     pauseLatch_=input.pause;
     // r292 DIRECT EXE 0x4192F6..0x419318: keyboard 'M' (0x4D) fades

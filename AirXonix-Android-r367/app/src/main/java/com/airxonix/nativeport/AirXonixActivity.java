@@ -30,12 +30,11 @@ import java.io.InputStream;
  */
 public final class AirXonixActivity extends SDLActivity {
     private static final String TAG = "AirXonixAndroid";
-    private static final String ASSET_REVISION = "r367-android-assets-v2";
+    private static final String ASSET_REVISION = "r367-android-assets-v1"; // game assets unchanged in r368
     private static final int UP = 1, DOWN = 2, LEFT = 4, RIGHT = 8;
     private static final int ACTION = 16, BACK = 32, PAUSE = 64;
-    private static final String[] REQUIRED_FILES = {"AirXonix-cleanroom.zip"};
-    private static final String[] OPTIONAL_FILES = {
-        "AirXonix.wrp.exe",
+    private static final String[] FILES = {
+        "AirXonix-cleanroom.zip", "AirXonix.wrp.exe",
         "MUSIC/00.mus", "MUSIC/01.mus", "MUSIC/02.mus",
         "MUSIC/03.mus", "MUSIC/04.mus", "MUSIC/05.mus",
         "MUSIC/06.mus", "MUSIC/07.mus", "MUSIC/08.mus",
@@ -43,6 +42,7 @@ public final class AirXonixActivity extends SDLActivity {
     };
 
     private static native void nativeSetPadMask(int mask);
+    private NativePadView padOverlay;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -67,8 +67,8 @@ public final class AirXonixActivity extends SDLActivity {
         // SDLActivity.mLayout is SDL's RelativeLayout containing the GL surface.
         // Overlay input is driven by JNI, independent of mouse/touch SDL gestures.
         if (mLayout != null) {
-            NativePadView overlay = new NativePadView(this);
-            mLayout.addView(overlay, new RelativeLayout.LayoutParams(
+            padOverlay = new NativePadView(this);
+            mLayout.addView(padOverlay, new RelativeLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         }
     }
@@ -77,31 +77,23 @@ public final class AirXonixActivity extends SDLActivity {
         File root = getFilesDir();
         SharedPreferences preferences = getSharedPreferences("airxonix_assets", MODE_PRIVATE);
         boolean upToDate = ASSET_REVISION.equals(preferences.getString("revision", ""));
+        AssetManager assets = getAssets();
+        // Public clean-room builds lack commercial EXE/MUSIC. Keep them playable;
+        // a personally packed APK still installs the complete original set.
+        boolean bundledOriginal = false;
+        try (InputStream check = assets.open("AirXonix.wrp.exe")) {
+            bundledOriginal = check.read() >= 0;
+        } catch (IOException ignored) { /* clean-room-only APK */ }
+        int count = bundledOriginal ? FILES.length : 1;
         if (upToDate) {
-            for (String name : REQUIRED_FILES) {
-                File f = new File(root, name);
+            for (int i = 0; i < count; i++) {
+                File f = new File(root, FILES[i]);
                 if (!f.isFile() || f.length() == 0) { upToDate = false; break; }
             }
         }
         if (upToDate) return;
-        AssetManager assets = getAssets();
-        for (String name : REQUIRED_FILES) {
-            installOne(assets, root, name);
-        }
-        for (String name : OPTIONAL_FILES) {
-            try (InputStream ignored = assets.open(name)) {
-                installOne(assets, root, name);
-            } catch (java.io.FileNotFoundException absent) {
-                // Public CI builds use only original-free generated graphics/audio.
-            }
-        }
-        // Save data belongs to the application, never APK assets.
-        if (!preferences.edit().putString("revision", ASSET_REVISION).commit())
-            Log.w(TAG, "Could not persist installed asset revision");
-        Log.i(TAG, "Bundled assets installed in " + root);
-    }
-
-    private void installOne(AssetManager assets, File root, String name) throws IOException {
+        for (int i = 0; i < count; i++) {
+            String name = FILES[i];
             File target = new File(root, name);
             File dir = target.getParentFile();
             if (dir == null || (!dir.isDirectory() && !dir.mkdirs()))
@@ -119,6 +111,12 @@ public final class AirXonixActivity extends SDLActivity {
             if (target.exists() && !target.delete()) throw new IOException("Cannot replace " + target);
             if (!temp.renameTo(target)) throw new IOException("Cannot finish " + target);
         }
+        // gameinf.bin and hscore.bin are intentionally NOT in FILES: preserve saves.
+        if (!preferences.edit().putString("revision", ASSET_REVISION).commit())
+            Log.w(TAG, "Could not persist installed asset revision");
+        Log.i(TAG, (bundledOriginal ? "Original EXE/MUSIC + clean-room" : "Clean-room")
+            + " assets installed in " + root);
+    }
 
     /** Called by SDL game's C++ InputSystem on losing a life. */
     public void vibrateOnDeath(int amplitude, int durationMs) {
@@ -139,10 +137,14 @@ public final class AirXonixActivity extends SDLActivity {
 
     @Override
     protected void onPause() {
+        if (padOverlay != null) padOverlay.releaseAll();
         if (!mBrokenLibraries) nativeSetPadMask(0);
         super.onPause();
     }
 
+    // One analogue thumbstick drives the game's cardinal movement. Our game
+    // does not allow simultaneous diagonal travel, so we select the dominant
+    // component after a circular deadzone. Buttons remain multi-touch capable.
     private static final class NativePadView extends View {
         private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
         NativePadView(Context context) { super(context); setWillNotDraw(false); }
@@ -164,49 +166,104 @@ public final class AirXonixActivity extends SDLActivity {
         private float cy() { return getHeight() * .70f; }
         private float bx() { return getWidth() * .85f; }
         private float by() { return getHeight() * .69f; }
+        private float stickRadius() { return step() * 1.55f; }
+        private float thumbTravel() { return step() * .97f; }
+        private static float dist(float x,float y,float xx,float yy) {
+            return (float)Math.hypot(x-xx,y-yy);
+        }
+        private int lastMask = 0;
+        private int stickPointerId = -1;
+        private float stickX = 0f, stickY = 0f;
+
+        private void drawStick(Canvas c) {
+            final float r=stickRadius(), x=cx(), y=cy();
+            p.setStyle(Paint.Style.FILL);
+            p.setColor(Color.argb(75, 20, 33, 54));
+            c.drawCircle(x,y,r,p);
+            p.setStyle(Paint.Style.STROKE);
+            p.setStrokeWidth(Math.max(2f,step()*.03f));
+            p.setColor(Color.argb(165,215,227,244));
+            c.drawCircle(x,y,r,p);
+            p.setColor(Color.argb(70,215,227,244));
+            c.drawCircle(x,y,r*.43f,p);
+            p.setStyle(Paint.Style.FILL);
+            p.setColor(stickPointerId>=0 ? Color.argb(195,112,191,255) : Color.argb(145,115,142,180));
+            c.drawCircle(x+stickX*thumbTravel(),y+stickY*thumbTravel(),r*.42f,p);
+            p.setStyle(Paint.Style.STROKE);
+            p.setStrokeWidth(Math.max(2f,step()*.022f));
+            p.setColor(Color.argb(200,240,246,255));
+            c.drawCircle(x+stickX*thumbTravel(),y+stickY*thumbTravel(),r*.42f,p);
+            p.setStyle(Paint.Style.FILL);
+        }
 
         @Override protected void onDraw(Canvas c) {
             float u=step();
-            oval(c,cx(),cy()-u,u*.78f,"▲",(lastMask & UP)!=0);
-            oval(c,cx(),cy()+u,u*.78f,"▼",(lastMask & DOWN)!=0);
-            oval(c,cx()-u,cy(),u*.78f,"◀",(lastMask & LEFT)!=0);
-            oval(c,cx()+u,cy(),u*.78f,"▶",(lastMask & RIGHT)!=0);
+            drawStick(c);
             oval(c,bx(),by(),u*.94f,"A",(lastMask & ACTION)!=0);
             oval(c,bx()-u*2,by()+u*.45f,u*.85f,"B",(lastMask & BACK)!=0);
             oval(c,getWidth()*.90f,getHeight()*.19f,u*.62f,"Ⅱ",(lastMask & PAUSE)!=0);
         }
 
-        private int controlAt(float x, float y) {
-            float u=step(), threshold=u*.84f;
-            if (dist(x,y,cx(),cy()-u)<threshold) return UP;
-            if (dist(x,y,cx(),cy()+u)<threshold) return DOWN;
-            if (dist(x,y,cx()-u,cy())<threshold) return LEFT;
-            if (dist(x,y,cx()+u,cy())<threshold) return RIGHT;
+        private int actionAt(float x,float y) {
+            float u=step();
             if (dist(x,y,bx(),by())<u*1.05f) return ACTION;
             if (dist(x,y,bx()-u*2,by()+u*.45f)<u*.95f) return BACK;
             if (dist(x,y,getWidth()*.90f,getHeight()*.19f)<u*.75f) return PAUSE;
             return 0;
         }
-        private float dist(float x,float y,float xx,float yy) {
-            return (float)Math.hypot(x-xx,y-yy);
-        }
 
-        private int lastMask = 0;
-        @Override public boolean onTouchEvent(MotionEvent event) {
-            int act=event.getActionMasked();
-            int mask=0;
-            if (act!=MotionEvent.ACTION_CANCEL) {
-                int lifted=act==MotionEvent.ACTION_UP || act==MotionEvent.ACTION_POINTER_UP
-                    ? event.getActionIndex():-1;
-                for (int i=0;i<event.getPointerCount();i++) {
-                    if (i!=lifted) mask |= controlAt(event.getX(i),event.getY(i));
-                }
-            }
-            if (mask!=lastMask) {
+        private void setStickPosition(float px,float py) {
+            // Clamp displacement to circular thumb travel; no quadratic dead
+            // zones, so the joystick starts moving smoothly after 20% travel.
+            float dx=(px-cx())/stickRadius(), dy=(py-cy())/stickRadius();
+            float len=(float)Math.hypot(dx,dy);
+            if(len>1f){dx/=len;dy/=len;}
+            stickX=dx;stickY=dy;
+        }
+        private int stickDirection() {
+            return stickPointerId<0 ? 0 : VirtualStickDirection.direction(stickX,stickY);
+        }
+        private void updateNative(int mask) {
+            if(mask!=lastMask){
                 lastMask=mask;
                 nativeSetPadMask(mask);
-                invalidate();
             }
+            invalidate();
+        }
+        void releaseAll() {
+            stickPointerId=-1;
+            stickX=0f;stickY=0f;
+            updateNative(0);
+        }
+
+        @Override public boolean onTouchEvent(MotionEvent event) {
+            int action=event.getActionMasked();
+            if(action==MotionEvent.ACTION_CANCEL){releaseAll();return true;}
+            int lifted=(action==MotionEvent.ACTION_UP || action==MotionEvent.ACTION_POINTER_UP)
+                ? event.getActionIndex() : -1;
+            if(lifted>=0 && event.getPointerId(lifted)==stickPointerId){
+                stickPointerId=-1;stickX=0f;stickY=0f;
+            }
+            // Grab the analogue pointer only on DOWN. Fingers pressing A/B
+            // cannot steal it, and moving off the base keeps the stick held.
+            if(action==MotionEvent.ACTION_DOWN || action==MotionEvent.ACTION_POINTER_DOWN){
+                int idx=event.getActionIndex();
+                if(stickPointerId<0 && dist(event.getX(idx),event.getY(idx),cx(),cy())
+                    <stickRadius()*1.35f){
+                    stickPointerId=event.getPointerId(idx);
+                }
+            }
+            int mask=0;
+            for(int i=0;i<event.getPointerCount();i++) {
+                if(i==lifted)continue;
+                if(event.getPointerId(i)==stickPointerId){
+                    setStickPosition(event.getX(i),event.getY(i));
+                }else{
+                    mask|=actionAt(event.getX(i),event.getY(i));
+                }
+            }
+            mask|=stickDirection();
+            updateNative(mask);
             return true;
         }
     }

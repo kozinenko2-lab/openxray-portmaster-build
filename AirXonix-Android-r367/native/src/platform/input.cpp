@@ -85,13 +85,26 @@ bool rawSelectStart(SDL_Joystick* joy) {
 }
 
 InputSystem::InputSystem() {
-    // SDL2 emits SDL_TEXTINPUT only while text input is active. Keeping it
-    // active is harmless outside the Records editor because the byte is merely
-    // exposed in InputState and ignored by all other game states.
-    SDL_StartTextInput();
+#if defined(__ANDROID__)
+    // SDL_StartTextInput() opens the Android IME. Do not summon a keyboard
+    // during startup, menus or gameplay: the name editor is the ONLY owner.
+    SDL_StopTextInput();
+#else
+    SDL_StartTextInput(); // preserve PC/PortMaster physical keyboard behaviour
+#endif
     openFirstInputDevice();
 }
 InputSystem::~InputSystem() { SDL_StopTextInput(); closeDevice(); }
+
+void InputSystem::setRecordNameTextInput(bool enabled) {
+#if defined(__ANDROID__)
+    // Guard transitions to avoid reopening the soft keyboard every frame.
+    if (enabled && !SDL_IsTextInputActive()) SDL_StartTextInput();
+    else if (!enabled && SDL_IsTextInputActive()) SDL_StopTextInput();
+#else
+    (void)enabled;
+#endif
+}
 
 void InputSystem::closeDevice() {
     if (controller_) {
